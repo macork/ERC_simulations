@@ -1,0 +1,843 @@
+---
+title: "Simulation study"
+author: "Michael Cork"
+date: "11/8/2021"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(tidyverse)
+library(data.table)
+library(MASS)
+library(ggeffects)
+library(parallel)
+```
+
+# Data generating mechanism
+We evaluate the performance of our methods for fitting ERC curves in a variety of data settings. In each setting, we generate six confounders $(C_1, C_2, ..., C_6)$, which include a combination of continuous and categorical variables.
+$$ C_1, ..., C_4 \sim N(0, I_4), C_5 \sim V \: \{-2, 2 \}, C_6 \sim U \: (-3, 3) $$
+Where $N(0, I_4)$ denotes a multivariate normal distribution, $V \: \{-2, 2 \}$ denotes a discrete uniform distribution, and $U(3, 3)$ denotes a continuous uniform distribution. We generate the exposure based on the assumptions in our data generating mechanism below, but we try to ensure it resembles the empirical distribution of particulate matter from the Medicare database. We consider a sample size of N = 1000 for these simulations. 
+
+## Data generating set a
+
+In this data generating scenario we assume there is no relationship between confounders and the response. We generate the exposure from a $N(10, 3)$ where we ensure all values are positive (truncated at 0). We then fit three relationships between the exposure and response (i) a linear relationship between exposure and response (ii) a smooth supralinear relationship between exposure and response (slope is higher at lower levels) and (iii) a linear threshold model where there is no relationship between exposure and response until a certain threshold is met.
+
+
+### Linear relationship between exposure and confounders 
+
+We first fit our model with a linear relationship between our exposure and response. The outcome model is specified as follows: 
+
+$$
+\begin{split} 
+Y|E,C &\sim N(\mu(E, C), 10^2) \\
+\mu(E, C) &= 20 + 0.1*E - (2, 2, 3, -1, 2, 2)*C 
+\end{split}
+$$
+
+Where C denotes $(C_1, C_2, C_3, C_4, C_5, C_6)$. We calculate the ERC curve by comparing the outcome value $Y$ at different values of our exposure $E$ to the trimmed minimum exposure, defined as the 2.5th percentile of our exposure value. The excess risk is the different between the outcome value at the specified exposure and the outcome value at the 2.5th percentile of exposure.
+
+To assess the performance of the different estimators, we calculate the absolute bias and mean squared error (MSE) of the estimated ERF. These two quantities were estimated empirically at each point within the range $\hat{\mathcal{E}}$, and integrated across the range $\hat{\mathcal{E}}$. Specifically, they are defined as follows:
+
+$$
+\begin{aligned}
+|\operatorname{Bias}| &=M^{-1} \sum_{m=1}^{M}\left|\sum_{s=1}^{S} \hat{R}_{s}\left(w_{m}\right) / S-R\left(w_{m}\right)\right| \\
+\operatorname{MSE} &=(M S)^{-1} \sum_{m=1}^{M} \sum_{s=1}^{S}\left(\hat{R}_{s}\left(w_{m}\right)-R\left(w_{m}\right)\right)^{2}
+\end{aligned}
+$$
+where $w_{1}, \ldots, w_{M}$ are 1,000 equally spaced points from 0 to 20 and $\hat{R}_{s}$ is the estimate of ERC in the $s$-th simulation. We report the $\mid$ Bias $\mid$ and MSE across 250 simulations (will increase to 1,000 later).
+
+
+```{r, cache = T, echo = F}
+# source the functions to use
+source("~/Desktop/Francesca_research/simulation_functions.R")
+set.seed(23)
+sample_size = 1000
+# Define exposure first
+exposure <- sort(rnorm(1000, mean = 10, sd = 3))
+exposure[exposure < 0] <- 0 # Truncate to be less than zero
+
+# Delete in a bit
+cf <- mvrnorm(n = sample_size,
+              mu = rep(0, 4),
+              Sigma = diag(4))
+cf5 <- sample(c((-2):2), sample_size, replace = T)
+cf6 <- runif(sample_size, min = -3, max = 3)
+confounders = cbind(cf, cf5, cf6)
+colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+
+# Now go through simulations
+sim_results <-
+  mclapply(1:250, mc.cores = 10, function(i) {
+    metrics_from_data(sample_size = sample_size, exposure = exposure, confounders = confounders, relationship = "linear")
+  })
+
+# now extract metric results and sim results
+metrics_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[1]])
+}))
+
+pred_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[2]])
+}))
+
+pred_results <- melt(pred_results, id = 1, variable.name = "model", value.name = "prediction")
+pred_results <- 
+  pred_results[, .(mean = mean(prediction),
+                 lower = quantile(prediction, 0.025),
+                 upper = quantile(prediction, 0.975)), by = .(model, exposure)]
+
+# Now calculate coverage as whether CI covers the truth and average over all exposure values
+coverage_data <- 
+  merge(pred_results[model %in% c("linear_model", "gam_model"), .(model, exposure, lower, upper)], 
+      pred_results[model == "true_fit", .(exposure, mean)])
+
+coverage_data <- coverage_data[, .(cov = between(mean, lower, upper)), by = .(exposure, model)][, .(coverage = 100*mean(cov)), by = .(model)]
+
+
+
+final_fig <- 
+  pred_results %>% 
+  ggplot(aes(x = exposure, y = mean, ymin = lower, ymax = upper, color = model, fill = model, linetype = model)) + 
+  geom_line() + 
+  geom_ribbon(alpha = 0.3) + 
+  theme_classic() + 
+  labs(x = "Exposure", y = "Risk difference by exposure")
+
+final_fig
+
+# Aggregate over simulations to get estimate of bias (with standard error) and MSE (with standard error)
+final_results <- merge(metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)], coverage_data)
+ 
+knitr::kable(final_results)
+```
+
+
+```{r, echo = F, eval = F}
+example_plot <- metrics_from_data(just_plots = T, exposure = exposure, confounders = confounders, relationship = "linear")
+example_plot
+```
+
+### Sublinear relationship between exposure and confounders 
+
+We can also fit our model with a sublinear relationship between our exposure and response. The outcome model is specified as follows: 
+
+$$
+\begin{split} 
+Y|E,C &\sim N(\mu(E, C), 10^2) \\
+\mu(E, C) &= 20 + 8*log_{10}(E + 1) - (2, 2, 3, -1, 2, 2)*C 
+\end{split}
+$$
+When we fit with a sample size of 1000 we see the following results:
+
+```{r, echo = F, cache = T}
+# Now go through simulations
+set.seed(99)
+sample_size = 1000
+# Define exposure first
+exposure <- sort(rnorm(sample_size, mean = 10, sd = 3))
+exposure[exposure < 0] <- 0 # Truncate to be less than zero
+
+# Delete in a bit
+cf <- mvrnorm(n = sample_size,
+              mu = rep(0, 4),
+              Sigma = diag(4))
+cf5 <- sample(c((-2):2), sample_size, replace = T)
+cf6 <- runif(sample_size, min = -3, max = 3)
+confounders = cbind(cf, cf5, cf6)
+colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+
+sim_results <-
+  mclapply(1:1000, mc.cores = 10, function(i) {
+    metrics_from_data(sample_size = sample_size, exposure = exposure, confounders = confounders, relationship = "sublinear")
+  })
+
+# now extract metric results and sim results
+metrics_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[1]])
+}))
+
+pred_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[2]])
+}))
+
+pred_results <- melt(pred_results, id = 1, variable.name = "model", value.name = "prediction")
+pred_results <- 
+  pred_results[, .(mean = mean(prediction),
+                 lower = quantile(prediction, 0.025),
+                 upper = quantile(prediction, 0.975)), by = .(model, exposure)]
+
+# Now calculate coverage as whether CI covers the truth and average over all exposure values
+coverage_data <- 
+  merge(pred_results[model %in% c("linear_model", "gam_model"), .(model, exposure, lower, upper)], 
+      pred_results[model == "true_fit", .(exposure, mean)])
+
+coverage_data <- coverage_data[, .(cov = between(mean, lower, upper)), by = .(exposure, model)][, .(coverage = 100*mean(cov)), by = .(model)]
+
+
+
+final_fig <- 
+  pred_results %>% 
+  ggplot(aes(x = exposure, y = mean, ymin = lower, ymax = upper, color = model, fill = model, linetype = model)) + 
+  geom_line() + 
+  geom_ribbon(alpha = 0.3) + 
+  theme_classic() + 
+  labs(x = "Exposure", y = "Risk difference by exposure", title = "Risk difference for sublinear case with sample size of 1000")
+
+final_fig
+
+# Aggregate over simulations to get estimate of bias (with standard error) and MSE (with standard error)
+final_results <- merge(metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)], coverage_data)
+ 
+knitr::kable(final_results)
+
+```
+
+```{r, echo = F, eval = F}
+example_plot <- metrics_from_data(sample_size = sample_size, just_plots = T, exposure = exposure, confounders = confounders, relationship = "sublinear")
+example_plot
+```
+
+Notice that the GAM is less biased than the linear model, but still has greater variance and therefore greater MSE (bias-variance tradeoff). If we increase the sample size from 1,000 to 10,000 we should see the GAM model perform better:
+
+
+```{r, echo = F, cache = T}
+# Now go through simulations
+set.seed(99)
+
+sample_size = 10000
+# Define exposure first
+exposure <- sort(rnorm(sample_size, mean = 10, sd = 3))
+exposure[exposure < 0] <- 0 # Truncate to be less than zero
+
+# Delete in a bit
+cf <- mvrnorm(n = sample_size,
+              mu = rep(0, 4),
+              Sigma = diag(4))
+cf5 <- sample(c((-2):2), sample_size, replace = T)
+cf6 <- runif(sample_size, min = -3, max = 3)
+confounders = cbind(cf, cf5, cf6)
+colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+
+sim_results <-
+  mclapply(1:250, mc.cores = 10, function(i) {
+    metrics_from_data(exposure = exposure, confounders = confounders, relationship = "sublinear", sample_size = sample_size)
+  })
+
+# now extract metric results and sim results
+metrics_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[1]])
+}))
+
+pred_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[2]])
+}))
+
+pred_results <- melt(pred_results, id = 1, variable.name = "model", value.name = "prediction")
+pred_results <- 
+  pred_results[, .(mean = mean(prediction),
+                 lower = quantile(prediction, 0.025),
+                 upper = quantile(prediction, 0.975)), by = .(model, exposure)]
+
+# Now calculate coverage as whether CI covers the truth and average over all exposure values
+coverage_data <- 
+  merge(pred_results[model %in% c("linear_model", "gam_model"), .(model, exposure, lower, upper)], 
+      pred_results[model == "true_fit", .(exposure, mean)])
+
+coverage_data <- coverage_data[, .(cov = between(mean, lower, upper)), by = .(exposure, model)][, .(coverage = 100*mean(cov)), by = .(model)]
+
+
+final_fig <- 
+  pred_results %>% 
+  ggplot(aes(x = exposure, y = mean, ymin = lower, ymax = upper, color = model, fill = model, linetype = model)) + 
+  geom_line() + 
+  geom_ribbon(alpha = 0.3) + 
+  theme_classic() + 
+  labs(x = "Exposure", y = "Risk difference by exposure", title = paste("Risk difference for sublinear case with sample size of" ,sample_size))
+
+final_fig
+
+# Aggregate over simulations to get estimate of bias (with standard error) and MSE (with standard error)
+final_results <- merge(metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)], coverage_data)
+ 
+knitr::kable(final_results)
+```
+
+Clearly varying the sample size is an important consideration when evaluating these methods. 
+
+### Threshold model 
+
+Finally, we can fit a threshold model, where the relationship between exposure and outcome is linear when the exposure is greater than 8:
+
+$$
+\begin{split} 
+Y|E,C &\sim N(\mu(E, C), 10^2) \\
+\mu(E, C) &= 20 + 5*E[E > 8] - (2, 2, 3, -1, 2, 2)*C 
+\end{split}
+$$
+
+Again we see the additive model performing better than the linear case, given that the linear model does not include a threshold. The threshold model is simulated from data sets of 1000 observations.  
+
+```{r, echo = F, cache = T}
+sample_size = 1000
+# Define exposure first
+exposure <- sort(rnorm(sample_size, mean = 10, sd = 3))
+exposure[exposure < 0] <- 0 # Truncate to be less than zero
+
+# Delete in a bit
+cf <- mvrnorm(n = sample_size,
+              mu = rep(0, 4),
+              Sigma = diag(4))
+cf5 <- sample(c((-2):2), sample_size, replace = T)
+cf6 <- runif(sample_size, min = -3, max = 3)
+confounders = cbind(cf, cf5, cf6)
+colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+
+sim_results <-
+  mclapply(1:250, mc.cores = 10, function(i) {
+    metrics_from_data(exposure = exposure, confounders = confounders, relationship = "threshold", sample_size = sample_size)
+  })
+
+# now extract metric results and sim results
+metrics_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[1]])
+}))
+
+pred_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[2]])
+}))
+
+pred_results <- melt(pred_results, id = 1, variable.name = "model", value.name = "prediction")
+pred_results <- 
+  pred_results[, .(mean = mean(prediction),
+                 lower = quantile(prediction, 0.025),
+                 upper = quantile(prediction, 0.975)), by = .(model, exposure)]
+
+# Now calculate coverage as whether CI covers the truth and average over all exposure values
+coverage_data <- 
+  merge(pred_results[model %in% c("linear_model", "gam_model"), .(model, exposure, lower, upper)], 
+      pred_results[model == "true_fit", .(exposure, mean)])
+
+coverage_data <- coverage_data[, .(cov = between(mean, lower, upper)), by = .(exposure, model)][, .(coverage = 100*mean(cov)), by = .(model)]
+
+final_fig <- 
+  pred_results %>% 
+  ggplot(aes(x = exposure, y = mean, ymin = lower, ymax = upper, color = model, fill = model, linetype = model)) + 
+  geom_line() + 
+  geom_ribbon(alpha = 0.3) + 
+  theme_classic() + 
+  labs(x = "Exposure", y = "Outcome", title = "Threshold model")
+
+final_fig
+
+# Aggregate over simulations to get estimate of bias (with standard error) and MSE (with standard error)
+final_results <- merge(metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)], coverage_data)
+ 
+knitr::kable(final_results)
+```
+
+\newpage
+
+# Count data 
+
+We fit the same confounders and exposures to a count framework 
+
+We first fit our model with a linear relationship between our exposure and response. The outcome model is specified as follows: 
+
+
+## Data generating set a
+In this data generating scenario we assume there is no relationship between confounders and the response. We generate the exposure from a $N(10, 3)$ where we ensure all values are positive (truncated at 0). We then fit three relationships between the exposure and response (i) a linear relationship between exposure and response (ii) a smooth supralinear relationship between exposure and response (slope is higher at lower levels) and (iii) a linear threshold model where there is no relationship between exposure and response until a certain threshold is met.
+
+###  Linear relationship between exposure and confounders 
+$$
+\begin{split} 
+Y|E,C &\sim Pois(\mu(E, C)) \\
+log(\mu(E, C)) &= 2 + 0.1*E - (0.2, 0.2, 0.3, -0.1, 0.2, 0.2)*C
+\end{split}
+$$
+
+
+
+```{r, echo = F, cache=T}
+# Eschif adds time to be around 1.4 minutes to complete
+set.seed(23)
+source("~/Desktop/Francesca_research/simulation_functions.R")
+sample_size = 1000
+# Define exposure first
+exposure <- sort(rnorm(sample_size, mean = 10, sd = 3))
+exposure[exposure < 0] <- 0 # Truncate to be less than zero
+
+# Delete in a bit
+cf <- mvrnorm(n = sample_size,
+              mu = rep(0, 4),
+              Sigma = diag(4))
+cf5 <- sample(c((-2):2), sample_size, replace = T)
+cf6 <- runif(sample_size, min = -3, max = 3)
+confounders = cbind(cf, cf5, cf6)
+colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+
+# start.time <- Sys.time()
+sim_results <-
+  mclapply(1:100, mc.cores = 10, function(i) {
+    metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", sample_size = sample_size, family = "poisson")
+  })
+# end.time <- Sys.time()
+# time.taken <- end.time - start.time
+# time.taken
+
+
+# now extract metric results and sim results
+metrics_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[1]])
+}))
+
+pred_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[2]])
+}))
+
+pred_results <- melt(pred_results, id = 1, variable.name = "model", value.name = "prediction")
+pred_results <- 
+  pred_results[, .(mean = mean(prediction),
+                 lower = quantile(prediction, 0.025),
+                 upper = quantile(prediction, 0.975)), by = .(model, exposure)]
+
+# Now calculate coverage as whether CI covers the truth and average over all exposure values
+coverage_data <- 
+  merge(pred_results[model %in% c("linear_model", "gam_model", "eschif"), .(model, exposure, lower, upper)], 
+      pred_results[model == "true_fit", .(exposure, mean)])
+
+coverage_data <- coverage_data[, .(cov = between(mean, lower, upper)), by = .(exposure, model)][, .(coverage = 100*mean(cov)), by = .(model)]
+
+final_fig <- 
+  pred_results %>% 
+  ggplot(aes(x = exposure, y = mean, ymin = lower, ymax = upper, color = model, fill = model, linetype = model)) + 
+  geom_line() + 
+  geom_ribbon(alpha = 0.2) + 
+  theme_classic() + 
+  labs(x = "Exposure", y = "Outcome")
+
+final_fig
+
+# Aggregate over simulations to get estimate of bias (with standard error) and MSE (with standard error)
+final_results <- merge(metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)], coverage_data)
+ 
+knitr::kable(final_results)
+
+```
+
+## Count data with threshold model
+
+Currently restricted to 100 draws for simulations becuase of eSCHIF, I will update this when I run it on the cluster. On my personal machine it is starting to take too long to run. 
+
+```{r, echo = F, cache=T}
+# Eschif adds time to be around 1.4 minutes to complete
+set.seed(99)
+source("~/Desktop/Francesca_research/simulation_functions.R")
+sample_size = 1000
+# Define exposure first
+exposure <- sort(rnorm(sample_size, mean = 10, sd = 3))
+exposure[exposure < 0] <- 0 # Truncate to be less than zero
+
+# Delete in a bit
+cf <- mvrnorm(n = sample_size,
+              mu = rep(0, 4),
+              Sigma = diag(4))
+cf5 <- sample(c((-2):2), sample_size, replace = T)
+cf6 <- runif(sample_size, min = -3, max = 3)
+confounders = cbind(cf, cf5, cf6)
+colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+
+# start.time <- Sys.time()
+sim_results <-
+  mclapply(1:100, mc.cores = 10, function(i) {
+    metrics_from_data(exposure = exposure, confounders = confounders, relationship = "threshold", sample_size = sample_size, family = "poisson")
+  })
+# end.time <- Sys.time()
+# time.taken <- end.time - start.time
+# time.taken
+
+
+# now extract metric results and sim results
+metrics_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[1]])
+}))
+
+pred_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[2]])
+}))
+
+pred_results <- melt(pred_results, id = 1, variable.name = "model", value.name = "prediction")
+pred_results <- 
+  pred_results[, .(mean = mean(prediction),
+                 lower = quantile(prediction, 0.025),
+                 upper = quantile(prediction, 0.975)), by = .(model, exposure)]
+
+# Now calculate coverage as whether CI covers the truth and average over all exposure values
+coverage_data <- 
+  merge(pred_results[model %in% c("linear_model", "gam_model", "eschif"), .(model, exposure, lower, upper)], 
+      pred_results[model == "true_fit", .(exposure, mean)])
+
+coverage_data <- coverage_data[, .(cov = between(mean, lower, upper)), by = .(exposure, model)][, .(coverage = 100*mean(cov)), by = .(model)]
+
+final_fig <- 
+  pred_results %>% 
+  ggplot(aes(x = exposure, y = mean, ymin = lower, ymax = upper, color = model, fill = model, linetype = model)) + 
+  geom_line() + 
+  geom_ribbon(alpha = 0.2) + 
+  theme_classic() + 
+  labs(x = "Exposure", y = "Outcome")
+
+final_fig
+
+# Aggregate over simulations to get estimate of bias (with standard error) and MSE (with standard error)
+final_results <- merge(metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)], coverage_data)
+ 
+knitr::kable(final_results)
+
+```
+
+```{r, echo = F, eval = F}
+## eSCHIF things
+# Exposure should be fixed here 
+sample_size = 1000
+# Define exposure first
+exposure <- sort(rnorm(sample_size, mean = 10, sd = 3))
+exposure[exposure < 0] <- 0 # Truncate to be less than zero
+
+# Delete in a bit
+cf <- mvrnorm(n = sample_size,
+              mu = rep(0, 4),
+              Sigma = diag(4))
+cf5 <- sample(c((-2):2), sample_size, replace = T)
+cf6 <- runif(sample_size, min = -3, max = 3)
+confounders = cbind(cf, cf5, cf6)
+colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+
+discrete_points = 1000
+
+data_example <- data_generate_a(sample_size = sample_size, exposure = exposure, confounders = confounders, family = "poisson", relationship = "linear")
+
+# Now fit a GAM model 
+gam_fit <- mgcv::gam(Y ~ s(exposure) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, family = "poisson")
+
+data_prediction <- 
+  data_example[, .(exposure = seq(min(data_example$exposure),
+                                  max(data_example$exposure),
+                                  length.out = discrete_points),
+                   cf1 = mean(cf1),
+                   cf2 = mean(cf2),
+                   cf3 = mean(cf3),
+                   cf4 = mean(cf4),
+                   cf5 = 0,
+                   cf6 = 0)]
+
+data_prediction[, pred := predict(gam_fit, newdata = data_prediction, se = F, type = "response")]
+data_prediction[, pred := pred / data_prediction[1, pred]]
+
+
+range <- max(exposure) - min(exposure)
+alpha = seq(1, range, by = 2)
+mu = seq(0, range, by = 2)
+tau = c(0.1, 0.2, 0.4, 0.8, 1)
+thres = seq(0, range, 0.5)
+
+
+y = log(data_prediction$pred)
+eschif_fit <-
+      rbindlist(mclapply(alpha, mc.cores = 5, function(a) {
+        rbindlist(lapply(mu, function(m) {
+            rbindlist(lapply(tau, function(t) {
+              rbindlist(lapply(thres, function(th) {
+                z = ((exposure - th) + abs(exposure - th)) / 2
+                diff = log(z / a + 1) / (1 + exp(-(z - m) / (t * range)))
+                fit = lm(y ~ diff - 1)
+                data.table(alpha = a, mu = m, tau = t, thres = th, aic = AIC(fit), theta = coef(fit))
+              }))
+            }))
+          }))
+        }))
+
+eschif_fit <- eschif_fit[aic == min(aic)]
+
+z = ((exposure - eschif_fit$thres) + abs(exposure - eschif_fit$thres)) / 2
+eschif_pred = exp(eschif_fit$theta * log(z / eschif_fit$alpha + 1) / (1 + exp(-(z - eschif_fit$mu) / (eschif_fit$tau * range))))
+
+data_prediction$eschif = eschif_pred
+data_prediction %>% 
+  pivot_longer(c("pred", "eschif"), names_to = "model", values_to = "prediction") %>%
+  arrange(exposure) %>%
+  ggplot(aes(x = exposure, y = prediction, color = model, linetype = model)) +
+  geom_line() + 
+  labs(x = "Exposure concentration", y = "Relative risk of death")
+    
+
+
+eSCHIF_draw_plot <- 
+  ggplot(data = melted_eSCHIF, aes(x = exposure, y = value)) + 
+  theme_bw() +
+  theme(panel.grid=element_blank()) +
+  geom_line(aes(group = variable), size=0.2, alpha=0.2) + 
+  geom_line(data = eSCHIF_predictions, aes(x = exposure, y = mean), color = "blue") + 
+  #geom_ribbon(data = eSCHIF_predictions, aes(x = pm, y = mean, ymin = lower, ymax = upper), alpha = 0.2, fill = "grey") + 
+  labs(x = "exposure", y = "Hazard ratio")
+
+eSCHIF_uncertainty_plot <- 
+  eSCHIF_predictions %>% 
+  ggplot(aes(x = pm, y = mean, ymin = lower, ymax = upper)) + 
+  geom_line() + 
+  geom_ribbon(alpha = 0.6, fill = "grey") + 
+  labs(x = "Particulate matter concentration", y = "Relative Hazard rate") + 
+  theme_bw() + 
+  theme(panel.grid=element_blank())
+
+# Store predictions in data table
+RCS_predictions <- 
+  melted_pred[, .(mean = quantile(value, probs = 0.5),
+                  lower = quantile(value, probs = 0.025),
+                  upper = quantile(value, probs = 0.975)), .(exposure)]
+
+both_plot <- 
+  rbind(cbind(RCS_predictions, type = "Smoothing spline"), cbind(eSCHIF_predictions, type = "eSCHIF")) %>% 
+  ggplot() + 
+  geom_line(aes(x = exposure, y = mean, color = type, linetype = type)) + 
+  geom_ribbon(aes(x = exposure, ymin = lower, ymax = upper, fill = type), alpha = 0.15) + 
+  labs(x = "Particulate matter concentration", y = "Relative Hazard rate") + 
+  scale_fill_discrete("") + 
+  scale_color_discrete("") + 
+  theme_bw()
+
+
+```
+
+
+```{r, echo = F, eval = F}
+## eSCHIF things
+# Exposure should be fixed here 
+sample_size = 1000
+# Define exposure first
+exposure <- sort(rnorm(sample_size, mean = 10, sd = 3))
+exposure[exposure < 0] <- 0 # Truncate to be less than zero
+
+# Delete in a bit
+cf <- mvrnorm(n = sample_size,
+              mu = rep(0, 4),
+              Sigma = diag(4))
+cf5 <- sample(c((-2):2), sample_size, replace = T)
+cf6 <- runif(sample_size, min = -3, max = 3)
+confounders = cbind(cf, cf5, cf6)
+colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+
+discrete_points = 1000
+
+data_example <- data_generate_a(sample_size = sample_size, exposure = exposure, confounders = confounders, family = "poisson", relationship = "linear")
+
+# Now fit a GAM model 
+gam_fit <- mgcv::gam(Y ~ s(exposure) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, family = "poisson")
+
+data_prediction <- 
+  data_example[, .(exposure = seq(min(data_example$exposure),
+                                  max(data_example$exposure),
+                                  length.out = discrete_points),
+                   cf1 = mean(cf1),
+                   cf2 = mean(cf2),
+                   cf3 = mean(cf3),
+                   cf4 = mean(cf4),
+                   cf5 = 0,
+                   cf6 = 0)]
+
+
+# Predict matrix that is multiplied by coefficients for a prediction 
+Xp <- predict(gam_fit, data_prediction, type = "lpmatrix")
+beta <- coef(gam_fit)
+Vb <- vcov(gam_fit)
+n <- 1000
+mrand <- mvrnorm(n, beta, Vb)
+
+# Inverse of the link is just exponentiate in this case 
+ilink <- family(gam_fit)$linkinv
+for (i in seq_len(n)) { 
+  pred_simulation = Xp %*% mrand[i, ]
+  pred_simulation = pred_simulation - pred_simulation[1] # no nead to make it so that fiirst simulation is 0
+  pred_simulation = ilink(pred_simulation)
+  data_prediction[, paste0("sim_", i) := pred_simulation]
+}
+
+ids <- names(data_prediction)[1:7]
+melted_pred <- melt(data_prediction, id.vars = ids)
+
+# Add mean prediction (subtracting off zero)
+data_prediction[, pred := predict(gam_fit, newdata = data_prediction, se = F, type = "response")]
+data_prediction[, pred := pred / data_prediction[1, pred]]
+
+plot_spline <- 
+  ggplot(data = melted_pred, aes(x = exposure, y = value)) + 
+  theme_bw() +
+  theme(panel.grid=element_blank()) +
+  geom_line(aes(group = variable), size=0.2, alpha=0.1) + 
+  geom_line(data = data_prediction, aes(x = exposure, y = pred), color = "blue") + 
+  labs(x = "exposure", y = "Hazard ratio")
+
+range <- max(exposure) - min(exposure)
+alpha = seq(1, range, by = 2)
+mu = seq(0, range, by = 2)
+tau = c(0.1, 0.2, 0.4, 0.8, 1)
+thres = seq(0, range, 0.5)
+
+# Define number of curves to fit (should be 1000 eventually, right now restricted until on cluster)
+schif_sim = 50
+eSCHIF_best_fit <-  
+  rbindlist(mclapply(1:schif_sim, mc.cores = 5, function(n) {
+    
+    # Grab predictions for simulation
+    y = log(data_prediction[, get(paste0("sim_", n))])
+    
+    # Loop through grid search, only saving lowest aic value
+    best_fit <- 
+      rbindlist(mclapply(alpha, mc.cores = 5, function(a) {
+        rbindlist(lapply(mu, function(m) {
+          best_fit <- 
+            rbindlist(lapply(tau, function(t) {
+              rbindlist(lapply(thres, function(th) {
+                z = ((exposure - th) + abs(exposure - th)) / 2
+                diff = log(z / a + 1) / (1 + exp(-(z - m) / (t * range)))
+                fit = lm(y ~ diff - 1)
+                data.table(alpha = a, mu = m, tau = t, thres = th, aic = AIC(fit), theta = coef(fit))
+              }))
+            }))
+          return(best_fit[aic == min(aic)])
+        }))
+      }))
+    # Return the minimum 
+    return(best_fit[aic == min(aic)])
+  }))
+
+
+xschif = exposure
+eSCHIF_draws = matrix(0, schif_sim, length(xschif))
+for (sim in 1:schif_sim) {
+  z = ((xschif - eSCHIF_best_fit[sim, thres]) + abs(xschif - eSCHIF_best_fit[sim, thres])) / 2
+  eSCHIF_draws[sim, ] = eSCHIF_best_fit[sim, theta] * log(z / eSCHIF_best_fit[sim, alpha] + 1) / (1 + exp(-(z - eSCHIF_best_fit[sim, mu]) / (eSCHIF_best_fit[sim, tau] * range)))
+}
+
+# Data table for graph 
+eSCHIF_pred = data.table(exposure = exposure)
+for (sim in 1:schif_sim) {
+  z = ((xschif - eSCHIF_best_fit[sim, thres]) + abs(xschif - eSCHIF_best_fit[sim, thres])) / 2
+  eSCHIF_draw = eSCHIF_best_fit[sim, theta] * log(z / eSCHIF_best_fit[sim, alpha] + 1) / (1 + exp(-(z - eSCHIF_best_fit[sim, mu]) / (eSCHIF_best_fit[sim, tau] * range)))
+  eSCHIF_pred[, paste0("sim_", sim) := eSCHIF_draw]
+}
+
+# Get median upper and lower
+eSCHIF_predictions <- 
+  data.table(exposure = xschif,
+             mean = exp(apply(eSCHIF_draws, 2, quantile, probs = 0.5)), # Grab the median only
+             lower = exp(apply(eSCHIF_draws, 2, quantile, probs = 0.025)),
+             upper = exp(apply(eSCHIF_draws, 2, quantile, probs = 0.975)))
+
+
+
+melted_eSCHIF <- melt(eSCHIF_pred, id.vars = "exposure")
+melted_eSCHIF[, value := exp(value)]
+
+eSCHIF_draw_plot <- 
+  ggplot(data = melted_eSCHIF, aes(x = exposure, y = value)) + 
+  theme_bw() +
+  theme(panel.grid=element_blank()) +
+  geom_line(aes(group = variable), size=0.2, alpha=0.2) + 
+  geom_line(data = eSCHIF_predictions, aes(x = exposure, y = mean), color = "blue") + 
+  #geom_ribbon(data = eSCHIF_predictions, aes(x = pm, y = mean, ymin = lower, ymax = upper), alpha = 0.2, fill = "grey") + 
+  labs(x = "exposure", y = "Hazard ratio")
+
+eSCHIF_uncertainty_plot <- 
+  eSCHIF_predictions %>% 
+  ggplot(aes(x = pm, y = mean, ymin = lower, ymax = upper)) + 
+  geom_line() + 
+  geom_ribbon(alpha = 0.6, fill = "grey") + 
+  labs(x = "Particulate matter concentration", y = "Relative Hazard rate") + 
+  theme_bw() + 
+  theme(panel.grid=element_blank())
+
+# Store predictions in data table
+RCS_predictions <- 
+  melted_pred[, .(mean = quantile(value, probs = 0.5),
+                  lower = quantile(value, probs = 0.025),
+                  upper = quantile(value, probs = 0.975)), .(exposure)]
+
+both_plot <- 
+  rbind(cbind(RCS_predictions, type = "Smoothing spline"), cbind(eSCHIF_predictions, type = "eSCHIF")) %>% 
+  ggplot() + 
+  geom_line(aes(x = exposure, y = mean, color = type, linetype = type)) + 
+  geom_ribbon(aes(x = exposure, ymin = lower, ymax = upper, fill = type), alpha = 0.25) + 
+  labs(x = "Particulate matter concentration", y = "Relative Hazard rate") + 
+  scale_fill_discrete("") + 
+  scale_color_discrete("") + 
+  theme_bw()
+
+
+```
+\newpage 
+
+### Changes from last time: 
+
+* Instead of estimating entire mean response function, only estimate the portion of the function that corresponds to the exposure. So disregard the intercept in the continuous and count case. Previous papers seem to have different strategies for reporting this. 
+
+* Changed definition of absolute bias and MSE, I also include coverage metrics. 
+
+* Changed threshold to be smaller at an exposure concentration of 5 (potentially better aligned with PM2.5 literature) 
+
+* Include eSCHIF, but made some changes to how it is estimated (not running 1,000 draws 1,000 times, but 1 draw 1,000 times)
+
+
+### Next steps:
+
+* Run eSCHIF on cluster to run 1,000 draws 
+
+* Sublinear for count data
+
+* Implement confounding 
+
+* Threshold detection (can implement for eSCHIF approach)
+
+* What generalized propensity score method to use? 
+
+* Download CausalGPS package and try fitting to simulated data 
+
+* Upload code to Github
+
+* Apply Boyu approach
+
+* Should I trim the data? Probably because if you do it on a reference point that is really extreme, you get pretty big confidence intervals. Might trim to rid yourself of some of those confidence intervals. Maybe trim. y(e) - y(0) comparing the exposure to the minimum exposure. See with true minimum versus trimmed. Show both plots, and see what they say 
+
+Probably should trim the data, looking at both a trimmed and untrimmed verion. 
+
+* Sometimes they center these at the median? Is it right or wrong way. Here are three different ways, center at the minimum and this is what CI looks like. Could center at trimmed value at 95%, center at 2.5th percentile. Or you center at the median, smaller CI overall becuase less uncertainty at the median, gets entire range and shows uncertainty values as well. 
+
+* Coverage, should that be calculated for each simulation one at a time. And then average across simulations. either way is fine, model based or boostrapped version of confidence intervals. Model fit is a little more conservative than a boostrap. Use model based uncertainty. In poisson case I believe the uncertainty is incorrect which is why we do the bootstrap. What uncertainty method should I be using for this simulation? Can I take the model uncertainty, or should I use bootstrap? I'm sure people have done it both ways, it might be the case that model ncertainty is fine. Taking two averages. Weighted coverage. 
+
+* When you present show your equation first, and describe how you got the plot from the fitted data. Give a better picture of what you are analyzing here. Make sure you write down exactly what you are doing, dividing by whatever. Minimum outcome, make the little things clear to the other people when they see it in the presentation, but the equation to produce the presentation right on the plot. 
+
+* Shoot for 50 simulations for now, just to save yourself time. 100 doest take too long, do 100. If it takes a long time, do 50. See if there are weird things happening, only takes 1/20 of the time. Keep the simulations small to see what 
+
+* Get things down to 3 questions and get those questions answered, and trying too much into the presentation. Hone your presentation down into 3 questions, be very detailed about the background and the questions. 
+
+* https://docs.google.com/document/d/1wa3tFVdJO3flBt7kToBaVEh_GWta8RLRWixftrEWb7E/edit (ERC curve from Priyanka presentation)
+
+
+
+
