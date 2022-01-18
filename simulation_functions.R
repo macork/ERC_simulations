@@ -18,8 +18,14 @@ data_generate_a <-
       #Y_true = as.numeric(20 - c(2, 2, 3, -1) %*% t(cf) - 2 * cf5 - 2 * cf6 + 0.1 * exposure)
     } else if (relationship == "sublinear") {
       #Y = as.numeric(20 - c(2, 2, 3, -1) %*% t(cf) - 2 * cf5 - 2 * cf6 + 5 * sqrt(exposure) + rnorm(size, mean = 0, sd = outcome_sd))
-      Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) + 8 * log10(exposure + 1) + rnorm(sample_size, mean = 0, sd = outcome_sd))
-      #Y_true = as.numeric(20 - c(2, 2, 3, -1) %*% t(cf) - 2 * cf5 - 2 * cf6 + log(exposure))
+      if (family == "gaussian") {
+        Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) + 8 * log10(exposure + 1) + rnorm(sample_size, mean = 0, sd = outcome_sd))
+        #Y_true = as.numeric(20 - c(2, 2, 3, -1) %*% t(cf) - 2 * cf5 - 2 * cf6 + log(exposure))
+      } else if (family == "poisson") {
+        lambdas = exp(as.numeric(unlist(2 + 0.2 * cf[, 1] + 0.2 * cf[, 2] + 0.3 * cf[, 3] -0.1 * cf[, 4] - 0.2 * cf[, 5] + 0.2 * cf[, 6] + 1.5 * log10(exposure + 1))))
+        Y = rpois(n = 1000, lambda = lambdas)
+      }
+    
     } else if (relationship == "threshold") {
       if (family == "gausian") {
         thresh_exp <- exposure 
@@ -45,7 +51,8 @@ data_generate_a <-
   }
 
 # Define function for simulations
-metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "linear", sample_size = 1000, confounders = NA, family = "gaussian") {
+metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "linear", sample_size = 1000, 
+                              confounders = NA, family = "gaussian", eschif_draws = NULL) {
   
   # Fit data generating mechanism
   data_example <- data_generate_a(sample_size = sample_size, exposure = exposure, confounders = confounders, relationship = relationship, family = family)
@@ -77,8 +84,12 @@ metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "lin
     } else if (family == "poisson")
       y_true <- exp(2 + 0.1 *  data_prediction$exposure)
   } else if (relationship == "sublinear") {
-    # y_true <- as.numeric(20 - c(2, 2, 3, -1) %*% t(as.matrix(data_prediction[, .(cf1, cf2, cf3, cf4)])) - 2 * data_prediction$cf5 - 2 * data_prediction$cf6 + 5 * sqrt(data_prediction$exposure))
-    y_true <- as.numeric(20 + 8 * log10(data_prediction$exposure + 1))
+    if (family == "gaussian") {
+      # y_true <- as.numeric(20 - c(2, 2, 3, -1) %*% t(as.matrix(data_prediction[, .(cf1, cf2, cf3, cf4)])) - 2 * data_prediction$cf5 - 2 * data_prediction$cf6 + 5 * sqrt(data_prediction$exposure))
+      y_true <- as.numeric(20 + 8 * log10(data_prediction$exposure + 1))
+    } else if (family == "poisson") {
+      y_true <- exp(2 + 1.5 * log10(data_prediction$exposure + 1))
+    }
   } else if (relationship == "threshold") {
     if (family == "gaussian") {
       thresh_exp <- data_prediction$exposure
@@ -102,7 +113,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "lin
                                         gam_model = predict(gam_fit, newdata = data_prediction, type = "response"),
                                         true_fit = y_true)]
   # Calculate trimmed reference exposure value
-  trimmed_reference <- sort(data_prediction$exposure)
+  trimmed_reference <- sort(data_prediction$exposure)[5]
   
   # Remove influence of the intercept to just compare risk difference or relative risk 
   if (family == "gaussian") {
@@ -139,27 +150,33 @@ metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "lin
     
     # Get best fit for eSCHIF
     # start.time <- Sys.time()
-    y_eschif <- log(data_prediction$gam_model)
-    eschif_fit <-
-      rbindlist(lapply(alpha, function(a) {
-        rbindlist(lapply(mu, function(m) {
-          rbindlist(lapply(tau, function(t) {
-            rbindlist(lapply(thres, function(th) {
-              z = ((exposure - th) + abs(exposure - th)) / 2
-              diff = log(z / a + 1) / (1 + exp(-(z - m) / (t * range)))
-              fit = lm(y_eschif ~ diff - 1)
-              data.table(alpha = a, mu = m, tau = t, thres = th, aic = AIC(fit), theta = coef(fit))
+    if (is.null(eschif_draws)) {
+      y_eschif <- log(data_prediction$gam_model)
+      eschif_fit <-
+        rbindlist(lapply(alpha, function(a) {
+          rbindlist(lapply(mu, function(m) {
+            rbindlist(lapply(tau, function(t) {
+              rbindlist(lapply(thres, function(th) {
+                z = ((exposure - th) + abs(exposure - th)) / 2
+                diff = log(z / a + 1) / (1 + exp(-(z - m) / (t * range)))
+                fit = lm(y_eschif ~ diff - 1)
+                data.table(alpha = a, mu = m, tau = t, thres = th, aic = AIC(fit), theta = coef(fit))
+              }))
             }))
-          }))
+          }))[aic == min(aic)]
         }))[aic == min(aic)]
-      }))[aic == min(aic)]
-    # end.time <- Sys.time()
-    # time.taken <- end.time - start.time
-    # time.taken
-    
-    z = ((exposure - eschif_fit$thres) + abs(exposure - eschif_fit$thres)) / 2
-    eschif_pred = exp(eschif_fit$theta * log(z / eschif_fit$alpha + 1) / (1 + exp(-(z - eschif_fit$mu) / (eschif_fit$tau * range))))
-    data_prediction$eschif <- eschif_pred
+      # end.time <- Sys.time()
+      # time.taken <- end.time - start.time
+      # time.taken
+      
+      z = ((exposure - eschif_fit$thres) + abs(exposure - eschif_fit$thres)) / 2
+      eschif_pred = exp(eschif_fit$theta * log(z / eschif_fit$alpha + 1) / (1 + exp(-(z - eschif_fit$mu) / (eschif_fit$tau * range))))
+      data_prediction$eschif <- eschif_pred
+    } else {
+      # Run through eSCHIF as many times as specified 
+      stop("Not done with this part of function yet")
+      
+    }
   }
   
   # Return plot if asked
