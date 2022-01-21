@@ -11,7 +11,8 @@ data_generate_a <-
         Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) + 0.1 * exposure + rnorm(sample_size, mean = 0, sd = outcome_sd))
       } else if (family == "poisson") {
         # Poisson model
-        lambdas = exp(as.numeric(unlist(2 + 0.2 * cf[, 1] + 0.2 * cf[, 2] + 0.3 * cf[, 3] -0.1 * cf[, 4] - 0.2 * cf[, 5] + 0.2 * cf[, 6] + 0.1 * exposure)))
+        
+        lambdas = exp(2 +  as.vector(matrix(c(0.2, 0.2, 0.3, -0.1, -0.2, 0.2), nrow = 1) %*% t(cf)) + 0.1 * exposure)
         Y = rpois(n = 1000, lambda = lambdas)
       }
       
@@ -113,7 +114,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "lin
                                         gam_model = predict(gam_fit, newdata = data_prediction, type = "response"),
                                         true_fit = y_true)]
   # Calculate trimmed reference exposure value
-  trimmed_reference <- sort(data_prediction$exposure)[5]
+  #trimmed_reference <- sort(data_prediction$exposure)[5]
   
   # Remove influence of the intercept to just compare risk difference or relative risk 
   if (family == "gaussian") {
@@ -134,13 +135,15 @@ metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "lin
     # 
     
   } else if (family == "poisson") {
-    model_types <- c("linear_model", "gam_model", "eschif")
+    model_types <- c("linear_model", "gam_model")
     data_prediction <- 
       data_prediction %>% 
       mutate(linear_model = linear_model / data_prediction$linear_model[1],
              gam_model = gam_model / data_prediction$gam_model[1],
              true_fit = true_fit / data_prediction$true_fit[1])
     
+    # Currently not using eSCHIF 
+    if ("eschif" %in% model_types) {
     # Now fit eSCHIF ---------------------------------
     range <- max(exposure) - min(exposure)
     alpha = seq(1, range, by = 2)
@@ -176,6 +179,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "lin
       # Run through eSCHIF as many times as specified 
       stop("Not done with this part of function yet")
       
+    }
     }
   }
   

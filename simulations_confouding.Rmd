@@ -1,0 +1,199 @@
+---
+title: "simulations_confouding"
+author: "Michael Cork"
+date: "1/20/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+rm(list = ls())
+library(tidyverse)
+library(data.table)
+library(MASS)
+library(ggeffects)
+library(parallel)
+```
+
+# Count data
+
+## Confounding
+
+We now look to generate the exposure data using different specifications of the relationship between confounding and exposure based on work by Xiao. We generate $E$ using six different specifications that rely on the function $\gamma(\mathbf{C})=-0.8+$ $(0.1,0.1,-0.1,0.2,0.1,0.1)$ C. Specifically,
+1) $W=9 \times \gamma(\mathbf{C})+17+N(0,5)$;
+2) $W=15 \times \gamma(\mathbf{C})+22+T(2)$;
+3) $W=9 \times \gamma(\mathbf{C})+3 / 2 C_{3}^{2}+15+N(0,5)$
+4) $W=49 \times \frac{\exp (\gamma(\mathbf{C}))}{1+\exp (\gamma(\mathbf{C}))}-6+N(0,5)$;
+22
+5) $W=42 \times \frac{1}{1+\exp (\gamma(\mathbf{C})\})}-18+N(0,5)$;
+6) $W=7 \times \log (\gamma(\mathbf{C}))+13+N(0,4)$;
+
+One thing to note is that for 6), in actuality it is using $W=7 \times \log (|\gamma(\mathbf{C})|)+13+N(0,4)$. I then ran through three different iterations of the sample size (N = 200, 1000, 5000) and then fit the following outcome model: 
+
+$$
+\begin{split} 
+Y|E,C &\sim Pois(\mu(E, C)) \\
+log(\mu(E, C)) &= 2 + 0.1*E - (0.2, 0.2, 0.3, -0.1, 0.2, 0.2)*C
+\end{split}
+$$
+
+
+```{r, echo = F, cache = T}
+# Eschif adds time to be around 1.4 minutes to complete
+set.seed(23)
+source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
+cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
+
+sim_data <- 
+  rbindlist(lapply(c(200, 1000), function(sample_size){
+    cf <- mvrnorm(n = sample_size,
+                mu = rep(0, 4),
+                Sigma = diag(4))
+    cf5 <- sample(c((-2):2), sample_size, replace = T)
+    cf6 <- runif(sample_size, min = -3, max = 3)
+    confounders = cbind(cf, cf5, cf6)
+    colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+  
+    sim_data <- 
+      rbindlist(lapply(c(1:6), function(exp_spec) {
+        if (exp_spec == 1) {
+          exposure = 9 * cov_function(confounders) + 17 + rnorm(sample_size, mean = 0, sd =  5)
+        } else if (exp_spec == 2) {
+          exposure = 15 *  cov_function(confounders) + 17 + rt(sample_size, df = 2)
+        } else if (exp_spec == 3) {
+          exposure = 9 * cov_function(confounders) + 3/2* (confounders[, "cf3"])^2 + 15 + rnorm(sample_size, mean = 0, sd =  5)
+        } else if (exp_spec == 4) {
+          exposure = 49 * exp(cov_function(confounders)) / (1 + exp(cov_function(confounders))) - 6 + rnorm(sample_size, mean = 0, sd = 5)
+        } else if (exp_spec == 5) {
+          exposure = 42 * 1 / (1 + exp(cov_function(confounders))) - 18 + rnorm(sample_size, mean = 0, sd = 5)
+        } else if (exp_spec == 6) {
+          exposure = 7 * log(abs(cov_function(confounders))) + 13 + rnorm(sample_size, mean = 0, sd = 4)
+        }
+        
+        sim_results <-
+          mclapply(1:50, mc.cores = 10, function(i) {
+          metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", sample_size = sample_size, family = "poisson")
+        })
+        
+        # now extract metric results and sim results
+        metrics_results <- 
+          rbindlist(lapply(sim_results, function(sim){
+            return(sim[[1]])
+        }))
+        final_results <- metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)]
+        final_results[, gps_mod := exp_spec]
+        final_results[, sample_size := sample_size]
+        return(final_results)
+      }))
+    return(sim_data)
+  }))
+
+sim_data %>% 
+  dplyr::select(gps_mod, sample_size, model, bias, mse) %>% 
+  arrange(gps_mod, sample_size) %>% 
+  knitr::kable()
+
+```
+
+
+Questions:
+What other types of outcome model should I use to make sure nonlinear confounding is occurring?
+
+## Types of confounding
+
+
+
+## Count data with sublinear relationship
+
+See equation above 
+
+```{r, echo = F, cache = T}
+# Eschif adds time to be around 1.4 minutes to complete
+set.seed(23)
+source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
+sample_size = 1000
+
+# Delete in a bit
+cf <- mvrnorm(n = sample_size,
+              mu = rep(0, 4),
+              Sigma = diag(4))
+cf5 <- sample(c((-2):2), sample_size, replace = T)
+cf6 <- runif(sample_size, min = -3, max = 3)
+confounders = cbind(cf, cf5, cf6)
+colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+
+
+cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
+
+exposure = 9 * cov_function(confounders) + 17 + rnorm(sample_size, mean = 0, sd =  5)
+
+exposure = 15 *  cov_function(confounders) + 17 + rt(sample_size, df = 2)
+
+exposure = 9 * cov_function(confounders) + 3/2* (confounders[, "cf3"])^2 + 15 + rnorm(sample_size, mean = 0, sd =  5)
+
+exposure = 49 * exp(cov_function(confounders)) / (1 + exp(cov_function(confounders))) - 6 + rnorm(sample_size, mean = 0, sd = 5)
+
+exposure = 42 * 1 / (1 + exp(cov_function(confounders))) - 18 + rnorm(sample_size, mean = 0, sd = 5)
+
+# If gps specification is 6
+# Why dont they include the absolute value here?? 
+#exposure = 7 * log(abs(cov_function(confounders))) + 13 + rnorm(sample_size, mean = 0, sd = 4)
+
+
+# Check to make sure the range lines up
+quantile(exposure, 0.05)
+quantile(exposure, 0.95)
+hist(exposure)
+
+
+# start.time <- Sys.time()
+sim_results <-
+  mclapply(1:50, mc.cores = 10, function(i) {
+    metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", sample_size = sample_size, family = "poisson")
+  })
+
+
+# now extract metric results and sim results
+metrics_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[1]])
+}))
+
+pred_results <- 
+  rbindlist(lapply(sim_results, function(sim){
+    return(sim[[2]])
+}))
+
+pred_results <- melt(pred_results, id = 1, variable.name = "model", value.name = "prediction")
+pred_results <- 
+  pred_results[, .(mean = mean(prediction),
+                 lower = quantile(prediction, 0.025),
+                 upper = quantile(prediction, 0.975)), by = .(model, exposure)]
+
+# Now calculate coverage as whether CI covers the truth and average over all exposure values
+coverage_data <- 
+  merge(pred_results[model %in% c("linear_model", "gam_model", "eschif"), .(model, exposure, lower, upper)], 
+      pred_results[model == "true_fit", .(exposure, mean)])
+
+coverage_data <- coverage_data[, .(cov = between(mean, lower, upper)), by = .(exposure, model)][, .(coverage = 100*mean(cov)), by = .(model)]
+
+final_fig <- 
+  pred_results %>% 
+  ggplot(aes(x = exposure, y = mean, ymin = lower, ymax = upper, color = model, fill = model, linetype = model)) + 
+  geom_line() + 
+  geom_ribbon(alpha = 0.2) + 
+  theme_classic() + 
+  labs(x = "Exposure", y = "HR")
+
+print(final_fig)
+
+# Aggregate over simulations to get estimate of bias (with standard error) and MSE (with standard error)
+# final_results <- merge(metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)], coverage_data)
+# final_results <- metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)]
+#  
+# knitr::kable(final_results)
+
+print(final_fig)
+```
