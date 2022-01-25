@@ -60,7 +60,7 @@ pseudo_pop <- generate_pseudo_pop(mydata$Y,
                                   gps_model = "non-parametric",
                                   use_cov_transform = TRUE,
                                   transformers = list("pow2", "pow3", "abs", "scale"),
-                                  trim_quantiles = c(0.01,0.99),
+                                  trim_quantiles = c(0.05,0.95),
                                   optimized_compile = TRUE,
                                   sl_lib = c("m_xgboost"),
                                   covar_bl_method = "absolute",
@@ -68,10 +68,13 @@ pseudo_pop <- generate_pseudo_pop(mydata$Y,
                                   max_attempt = 4,
                                   matching_fun = "matching_l1",
                                   delta_n = 1,
-                                  scale = 0.5,
+                                  scale = 1,
                                   nthread = 1)
 
-plot(psuedo_pop)
+plot(pseudo_pop)
+
+# Trimmed, matched and then fit. Match, trim and then fit. 
+
 
 pseudo_pop2 <- generate_pseudo_pop(mydata$Y,
                                   mydata$treat,
@@ -104,7 +107,7 @@ erf_obj <- estimate_npmetric_erf(pseudo_pop$pseudo_pop$Y,
 plot(erf_obj)
 
 
-# Generat GPS value (internal function?)
+# Generate GPS value (internal function?)
 data_with_gps <- estimate_gps(Y = mydata$Y,
                               w = mydata$treat,
                               c = mydata[c("cf1","cf2","cf3","cf4","cf5","cf6","year","region")],
@@ -127,8 +130,8 @@ data_with_gps <- estimate_gps(Y = mydata$Y,
 # What happens if we don't get good correlation matching? 
 
 # Different simulation settings, try those out as well 
-Here is an interesting tidbit:
-  We also show an example where our GPS matching approach is not able to achieve covariate balance under a scenario where the covariates are strongly associated with the exposure (see Section S.3.5 of the Supplementary Materials). We suggest that researchers proceed to the analysis stage only if covariate balance has been achieved in the design stage.
+# Here is an interesting tidbit:
+# We also show an example where our GPS matching approach is not able to achieve covariate balance under a scenario where the covariates are strongly associated with the exposure (see Section S.3.5 of the Supplementary Materials). We suggest that researchers proceed to the analysis stage only if covariate balance has been achieved in the design stage.
 
 
 
@@ -139,7 +142,7 @@ Here is an interesting tidbit:
 # Could use base case of linear confounding for first simulation, discuss with Dan if that is a good use of my time? I wanted some knowledge of this algorithm before 
 # Talking with PRiiyanka and Jenny about using this package 
 
-W =9×γ(C)+17+N(0,5);
+# W =9×γ(C)+17+N(0,5);
 
 
 # We specify the location constants (17, 22, 15, −6, −18, 13) and scale constants (9, 15, 9, 49, 42, 7) to 
