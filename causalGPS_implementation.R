@@ -54,13 +54,13 @@ mydata$cf5 <- as.factor(mydata$cf5)
 
 pseudo_pop <- generate_pseudo_pop(mydata$Y,
                                   mydata$treat,
-                                  mydata[c("cf1","cf2","cf3","cf4","cf5","cf6","year","region")],
+                                  mydata[c("cf1","cf2","cf3","cf4","cf5","cf6")],
                                   ci_appr = "matching",
                                   pred_model = "sl",
                                   gps_model = "non-parametric",
                                   use_cov_transform = TRUE,
                                   transformers = list("pow2", "pow3", "abs", "scale"),
-                                  trim_quantiles = c(0.05,0.95),
+                                  trim_quantiles = c(0.01,0.99),
                                   optimized_compile = TRUE,
                                   sl_lib = c("m_xgboost"),
                                   covar_bl_method = "absolute",
@@ -71,7 +71,31 @@ pseudo_pop <- generate_pseudo_pop(mydata$Y,
                                   scale = 1,
                                   nthread = 1)
 
+pseudo_pop <- generate_pseudo_pop(mydata$Y,
+                                  mydata$treat,
+                                  mydata[c("cf1","cf2","cf3","cf4","cf5","cf6", "year", "region")],
+                                  ci_appr = "matching",
+                                  pred_model = "sl",
+                                  gps_model = "non-parametric",
+                                  use_cov_transform = TRUE,
+                                  transformers = list("pow2", "pow3"),
+                                  trim_quantiles = c(0.01,0.99),
+                                  optimized_compile = TRUE,
+                                  sl_lib = c("m_xgboost","SL.earth",
+                                             "SL.ranger"),
+                                  params = list(xgb_nrounds=c(10,20,30),
+                                                xgb_eta=c(0.1,0.2,0.3)),
+                                  covar_bl_method = "absolute",
+                                  covar_bl_trs = 0.1,
+                                  max_attempt = 1,
+                                  matching_fun = "matching_l1",
+                                  delta_n = 1,
+                                  scale = 0.5,
+                                  nthread = 1)
+
 plot(pseudo_pop)
+
+# When you are running 
 
 # Trimmed, matched and then fit. Match, trim and then fit. 
 
