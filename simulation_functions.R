@@ -11,7 +11,6 @@ data_generate_a <-
         Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) + 0.1 * exposure + rnorm(sample_size, mean = 0, sd = outcome_sd))
       } else if (family == "poisson") {
         # Poisson model
-        
         lambdas = exp(2 +  as.vector(matrix(c(0.2, 0.2, 0.3, -0.1, -0.2, 0.2), nrow = 1) %*% t(cf)) + 0.1 * exposure)
         Y = rpois(n = 1000, lambda = lambdas)
       }
@@ -52,17 +51,26 @@ data_generate_a <-
   }
 
 # Define function for simulations
+# adjust_confounder says if we should adjust for confounders at all in our model
 metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "linear", sample_size = 1000, 
-                              confounders = NA, family = "gaussian", eschif_draws = NULL) {
+                              confounders = NA, family = "gaussian", eschif_draws = NULL, adjust_confounder = T) {
   
   # Fit data generating mechanism
   data_example <- data_generate_a(sample_size = sample_size, exposure = exposure, confounders = confounders, relationship = relationship, family = family)
   
   # Now fit a linear model
-  linear_fit <- glm(Y ~ exposure + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, family = family)
+  if (adjust_confounder == T) {
+    linear_fit <- glm(Y ~ exposure + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, family = family)
+  } else {
+    linear_fit <- glm(Y ~ exposure, data = data_example, family = family)
+  }
   
   # Now fit a GAM model 
-  gam_fit <- mgcv::gam(Y ~ s(exposure) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, family = family)
+  if (adjust_confounder == T) {
+    gam_fit <- mgcv::gam(Y ~ s(exposure) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, family = family)
+  } else {
+    gam_fit <- mgcv::gam(Y ~ s(exposure), data = data_example, family = family)
+  }
   
   # Now many points to evaluate the integral
   discrete_points = 1000
@@ -114,7 +122,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "lin
                                         gam_model = predict(gam_fit, newdata = data_prediction, type = "response"),
                                         true_fit = y_true)]
   # Calculate trimmed reference exposure value
-  #trimmed_reference <- sort(data_prediction$exposure)[5]
+  trimmed_reference <- sort(data_prediction$exposure)[5]
   
   # Remove influence of the intercept to just compare risk difference or relative risk 
   if (family == "gaussian") {
