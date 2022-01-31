@@ -73,6 +73,8 @@ metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "lin
     gam_fit <- mgcv::gam(Y ~ s(exposure), data = data_example, family = family)
   }
   
+  # Now fit the causalGPS model
+  
   # Now many points to evaluate the integral
   discrete_points = 1000
   

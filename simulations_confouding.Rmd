@@ -3,8 +3,8 @@ title: "Confouding adjustment"
 author: "Michael Cork"
 date: "1/20/2022"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -50,7 +50,7 @@ cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 
 sim_data <- 
   rbindlist(lapply(c(200), function(sample_size){
     # Iterate through several simulations
-    rbindlist(lapply(c(1:10), function(sim) {
+    rbindlist(mclapply(c(1:100), mc.cores = 10, function(sim) {
       cf <- mvrnorm(n = sample_size,
                   mu = rep(0, 4),
                   Sigma = diag(4))
@@ -75,19 +75,24 @@ sim_data <-
             exposure = 7 * log(abs(cov_function(confounders))) + 13 + rnorm(sample_size, mean = 0, sd = 4)
           }
           
-          # Currently replicating through 100 simulations
-          sim_results <-
-            mclapply(1:50, mc.cores = 10, function(i) {
-            metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", 
-                              sample_size = sample_size, family = "gaussian", adjust_confounder = F)
-          })
+          # # Commented out is what we would do if we wanted replicates
+          # sim_results <-
+          #   mclapply(1:50, mc.cores = 10, function(i) {
+          #   metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", 
+          #                     sample_size = sample_size, family = "gaussian", adjust_confounder = F)
+          # })
+          # 
+          # # now extract metric results and sim results
+          # metrics_results <- 
+          #   rbindlist(lapply(sim_results, function(sim){
+          #     return(sim[[1]])
+          # }))
+          # final_results <- metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)]
           
-          # now extract metric results and sim results
-          metrics_results <- 
-            rbindlist(lapply(sim_results, function(sim){
-              return(sim[[1]])
-          }))
-          final_results <- metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)]
+          final_results <- 
+            metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", 
+                              sample_size = sample_size, family = "gaussian", adjust_confounder = F)$metrics
+          
           final_results[, gps_mod := gps_mod]
           final_results[, sample_size := sample_size]
           final_results[, sim := sim]
@@ -99,9 +104,9 @@ sim_data <-
 
 # Working here on getting that data working, so far now luck 
 
- sim_data <- 
-  sim_data %>% 
-  mutate(bias = abs(bias)) 
+ # sim_data <-
+ #  sim_data %>%
+ #  mutate(bias = abs(bias))
  
 plot_data <- 
   sim_data %>% 
@@ -115,10 +120,10 @@ plot_data <-
 # Now make the correct boxplot to compare the results 
 # What is the metric being used by Boyu? 
 
-levels(plot_data$name) <- c("Absolute_bias", "MSE")
+levels(plot_data$name) <- c("Bias", "MSE")
 
 plot_data %>% 
-  filter(name == "Absolute_bias") %>% 
+  filter(name == "Bias") %>% 
   ggplot() + 
   geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
@@ -135,13 +140,13 @@ plot_data %>%
   theme_bw() + 
   facet_grid(sample_size ~ name)
 
-plot_data %>% 
-  ggplot() + 
-  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
-  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
-  labs(x = "Scenario", y = "Value") + 
-  theme_bw() + 
-  facet_grid(sample_size ~ name)
+# plot_data %>% 
+#   ggplot() + 
+#   geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
+#   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+#   labs(x = "Scenario", y = "Value") + 
+#   theme_bw() + 
+#   facet_grid(sample_size ~ name)
 
 
 # sim_data %>% 
@@ -162,7 +167,7 @@ cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 
 sim_data <- 
   rbindlist(lapply(c(200), function(sample_size){
     # Iterate through several simulations
-    rbindlist(lapply(c(1:10), function(sim) {
+    rbindlist(mclapply(c(1:100), mc.cores = 10, function(sim) {
       cf <- mvrnorm(n = sample_size,
                   mu = rep(0, 4),
                   Sigma = diag(4))
@@ -187,19 +192,24 @@ sim_data <-
             exposure = 7 * log(abs(cov_function(confounders))) + 13 + rnorm(sample_size, mean = 0, sd = 4)
           }
           
-          # Currently replicating through 100 simulations
-          sim_results <-
-            mclapply(1:50, mc.cores = 10, function(i) {
-            metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", 
-                              sample_size = sample_size, family = "gaussian", adjust_confounder = T)
-          })
+          # # Commented out is what we would do if we wanted replicates
+          # sim_results <-
+          #   mclapply(1:50, mc.cores = 10, function(i) {
+          #   metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", 
+          #                     sample_size = sample_size, family = "gaussian", adjust_confounder = F)
+          # })
+          # 
+          # # now extract metric results and sim results
+          # metrics_results <- 
+          #   rbindlist(lapply(sim_results, function(sim){
+          #     return(sim[[1]])
+          # }))
+          # final_results <- metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)]
           
-          # now extract metric results and sim results
-          metrics_results <- 
-            rbindlist(lapply(sim_results, function(sim){
-              return(sim[[1]])
-          }))
-          final_results <- metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)]
+          final_results <- 
+            metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", 
+                              sample_size = sample_size, family = "gaussian", adjust_confounder = T)$metrics
+          
           final_results[, gps_mod := gps_mod]
           final_results[, sample_size := sample_size]
           final_results[, sim := sim]
@@ -211,9 +221,9 @@ sim_data <-
 
 # Working here on getting that data working, so far now luck 
 
- sim_data <- 
-  sim_data %>% 
-  mutate(bias = abs(bias)) 
+ # sim_data <-
+ #  sim_data %>%
+ #  mutate(bias = abs(bias))
  
 plot_data <- 
   sim_data %>% 
@@ -227,16 +237,16 @@ plot_data <-
 # Now make the correct boxplot to compare the results 
 # What is the metric being used by Boyu? 
 
-levels(plot_data$name) <- c("Absolute_bias", "MSE")
+levels(plot_data$name) <- c("Bias", "MSE")
 
 plot_data %>% 
-  filter(name == "Absolute_bias") %>% 
+  filter(name == "Bias") %>% 
   ggplot() + 
   geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
   labs(x = "Scenario", y = "Value") + 
   theme_bw() + 
-  facet_grid(sample_size ~ name)
+  facet_grid(sample_size ~ name, scales = "free")
 
 plot_data %>% 
   filter(name == "MSE") %>% 
@@ -245,15 +255,15 @@ plot_data %>%
   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
   labs(x = "Scenario", y = "Value") + 
   theme_bw() + 
-  facet_grid(sample_size ~ name)
+  facet_grid(sample_size ~ name, scales = "free")
 
-plot_data %>% 
-  ggplot() + 
-  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
-  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
-  labs(x = "Scenario", y = "Value") + 
-  theme_bw() + 
-  facet_grid(sample_size ~ name)
+# plot_data %>% 
+#   ggplot() + 
+#   geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
+#   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+#   labs(x = "Scenario", y = "Value") + 
+#   theme_bw() + 
+#   facet_grid(sample_size ~ name)
 
 ```
 
@@ -261,7 +271,7 @@ plot_data %>%
 
 Now we adjust for the ratio between the standard deviation of the exposure and the standard deviation of the confounding, keeping the exposure relationship constant at 0.1. Here we don't adjust for confounders at all. Smaller values for this ratio indicate that the standard deviation of the confounding is much larger than the effect of the exposure. 
 
-```{r, cache = T, echo = F, eval = F}
+```{r, cache = T, echo = F, eval = T}
 set.seed(23)
 source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
 cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
@@ -269,7 +279,7 @@ cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 
 adjusted_sim <- 
   rbindlist(lapply(c(200), function(sample_size){
     # Iterate through several simulations
-    rbindlist(lapply(c(1:2), function(sim) {
+    rbindlist(mclapply(c(1:100), function(sim) {
       # Iterate through ratio of exposure and confounder
       rbindlist(lapply(c(1, 0.1, 0.01), function(exposure_confounder_ratio) {
         cf <- mvrnorm(n = sample_size,
@@ -300,20 +310,12 @@ adjusted_sim <-
             # sd(0.1 * exposure) / sd((c(2, 2, 3, -1, -2, -2)) %*% t(confounders))
             # sd(0.1 * exposure) / sd((confounder_mult * c(2, 2, 3, -1, -2, -2)) %*% t(confounders))
             # sd(c(2, 2, 3, -1, -2, -2) %*% t(confounders))
-        
-            # Currently replicating through 100 simulations
-            sim_results <-
-              mclapply(1:50, mc.cores = 10, function(i) {
-              metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", 
-                                sample_size = sample_size, family = "gaussian", adjust_confounder = F, confounder_mult = confounder_mult)
-            })
             
-            # now extract metric results and sim results
-            metrics_results <- 
-              rbindlist(lapply(sim_results, function(sim){
-                return(sim[[1]])
-            }))
-            final_results <- metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)]
+            final_results <- 
+              metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear",
+                                sample_size = sample_size, family = "gaussian", adjust_confounder = F, 
+                                confounder_mult = confounder_mult)$metrics
+            
             final_results[, gps_mod := gps_mod]
             final_results[, sample_size := sample_size]
             final_results[, sim := sim]
@@ -326,32 +328,33 @@ adjusted_sim <-
 
 # Working here on getting that data working, so far now luck 
 
-adjusted_sim <-
-  adjusted_sim %>%
-  mutate(bias = abs(bias))
+# adjusted_sim <-
+#   adjusted_sim %>%
+#   mutate(bias = abs(bias))
  
 plot_data <- 
   adjusted_sim %>% 
   tidyr::pivot_longer(c("bias", "mse")) %>% 
   mutate(name = factor(name))  %>% 
   dplyr::group_by(model, gps_mod, sample_size, exp_conf_ratio, name) %>% 
-  dplyr::summarize(mean = mean(value), 
-            lower = quantile(value, 0.2),
-            upper = quantile(value, 0.8))
+  dplyr::summarize(mean = quantile(value, 0.5), 
+            lower = quantile(value, 0.1),
+            upper = quantile(value, 0.9))
 
 # Now make the correct boxplot to compare the results 
 # What is the metric being used by Boyu? 
 
-levels(plot_data$name) <- c("Absolute_bias", "MSE")
+levels(plot_data$name) <- c("Bias", "MSE")
 
 plot_data %>% 
-  filter(name == "Absolute_bias") %>% 
+  filter(name == "Bias") %>% 
   ggplot() + 
   geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  geom_hline(yintercept=c(0), linetype="solid", size = 0.3) + 
   labs(x = "Scenario", y = "Value") + 
   theme_bw() + 
-  facet_grid(exp_conf_ratio ~ name)
+  facet_grid(exp_conf_ratio ~ name, scales = "free")
 
 plot_data %>% 
   filter(name == "MSE") %>% 
@@ -360,22 +363,12 @@ plot_data %>%
   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
   labs(x = "Scenario", y = "Value") + 
   theme_bw() + 
-  facet_grid(sample_size ~ name)
-
-plot_data %>% 
-  ggplot() + 
-  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
-  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
-  labs(x = "Scenario", y = "Value") + 
-  theme_bw() + 
-  facet_grid(sample_size ~ name)
-
-
+  facet_grid(exp_conf_ratio ~ name, scales = "free")
 
 ```
 I then repeat with adjustment for linear confounding
 
-```{r, cache = T, echo = F, eval = F}
+```{r, cache = T, echo = F, eval = T}
 set.seed(23)
 source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
 cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
@@ -383,7 +376,7 @@ cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 
 adjusted_sim <- 
   rbindlist(lapply(c(200), function(sample_size){
     # Iterate through several simulations
-    rbindlist(lapply(c(1:4), function(sim) {
+    rbindlist(mclapply(c(1:100), function(sim) {
       # Iterate through ratio of exposure and confounder
       rbindlist(lapply(c(1, 0.1, 0.01), function(exposure_confounder_ratio) {
         cf <- mvrnorm(n = sample_size,
@@ -414,20 +407,12 @@ adjusted_sim <-
             # sd(0.1 * exposure) / sd((c(2, 2, 3, -1, -2, -2)) %*% t(confounders))
             # sd(0.1 * exposure) / sd((confounder_mult * c(2, 2, 3, -1, -2, -2)) %*% t(confounders))
             # sd(c(2, 2, 3, -1, -2, -2) %*% t(confounders))
-        
-            # Currently replicating through 100 simulations
-            sim_results <-
-              mclapply(1:50, mc.cores = 10, function(i) {
-              metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", 
-                                sample_size = sample_size, family = "gaussian", adjust_confounder = T, confounder_mult = confounder_mult)
-            })
             
-            # now extract metric results and sim results
-            metrics_results <- 
-              rbindlist(lapply(sim_results, function(sim){
-                return(sim[[1]])
-            }))
-            final_results <- metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)]
+            final_results <- 
+              metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear",
+                                sample_size = sample_size, family = "gaussian", adjust_confounder = T, 
+                                confounder_mult = confounder_mult)$metrics
+            
             final_results[, gps_mod := gps_mod]
             final_results[, sample_size := sample_size]
             final_results[, sim := sim]
@@ -440,32 +425,33 @@ adjusted_sim <-
 
 # Working here on getting that data working, so far now luck 
 
-adjusted_sim <-
-  adjusted_sim %>%
-  mutate(bias = abs(bias))
+# adjusted_sim <-
+#   adjusted_sim %>%
+#   mutate(bias = abs(bias))
  
 plot_data <- 
   adjusted_sim %>% 
   tidyr::pivot_longer(c("bias", "mse")) %>% 
   mutate(name = factor(name))  %>% 
   dplyr::group_by(model, gps_mod, sample_size, exp_conf_ratio, name) %>% 
-  dplyr::summarize(mean = mean(value), 
-            lower = quantile(value, 0.2),
-            upper = quantile(value, 0.8))
+  dplyr::summarize(mean = quantile(value, 0.5), 
+            lower = quantile(value, 0.1),
+            upper = quantile(value, 0.9))
 
 # Now make the correct boxplot to compare the results 
 # What is the metric being used by Boyu? 
 
-levels(plot_data$name) <- c("Absolute_bias", "MSE")
+levels(plot_data$name) <- c("Bias", "MSE")
 
 plot_data %>% 
-  filter(name == "Absolute_bias") %>% 
+  filter(name == "Bias") %>% 
   ggplot() + 
   geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  geom_hline(yintercept=c(0), linetype="solid", size = 0.3) + 
   labs(x = "Scenario", y = "Value") + 
   theme_bw() + 
-  facet_grid(exp_conf_ratio ~ name, scales = "free_y")
+  facet_grid(exp_conf_ratio ~ name, scales = "free")
 
 plot_data %>% 
   filter(name == "MSE") %>% 
@@ -474,17 +460,7 @@ plot_data %>%
   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
   labs(x = "Scenario", y = "Value") + 
   theme_bw() + 
-  facet_grid(sample_size ~ name)
-
-plot_data %>% 
-  ggplot() + 
-  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
-  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
-  labs(x = "Scenario", y = "Value") + 
-  theme_bw() + 
-  facet_grid(sample_size ~ name)
-
-
+  facet_grid(exp_conf_ratio ~ name, scales = "free")
 
 ```
 
@@ -524,7 +500,7 @@ c(2, 2, 3, -1, -2, -2) %*% t(confounders) %>% hist()
 
 * Email esolinga@hsph.harvard.edu, sluvisi@hsph.harvard.edu, francesca for keys to building
 
-Run this sample like 50 or 100 times to see if its doing the right things. For now rerun in a reaonable amount of time. Take the confounding effect, the vector times C and multiply that by 10 and 50 to see how confounding is adjusting. You can also do sd(e) / sd(C) and then find x such that sd(e) / sd(c) is .05, .01 or .005. 
+* Add causalGPS to type of fit here, and see how it does in terms of bias compared to others (should see difference since it is correctly accouting in all cases)
 
 scale by sd(e) / sd(x*c) different noise settings. Inject more random noise. Should have bigger sample and more overalp and a little bit lower bias. Bias is going to remain to an extent. The model wont be consistent becuase the model is wrong, remain pretty unbiased. When it is not linearly adjusted. 
 
