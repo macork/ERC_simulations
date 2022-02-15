@@ -73,7 +73,58 @@ metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "lin
     gam_fit <- mgcv::gam(Y ~ s(exposure), data = data_example, family = family)
   }
   
-  # Now fit the causalGPS model
+  # Now fit the causal model with weight by GPS
+  if (adjust_confounder == T) {
+    # We can fit this with XGboost
+    # now fit with caret
+    # library(caret)
+    # library(xgboost)
+    # xgb_trcontrol = trainControl(
+    #   method = "cv",
+    #   number = 5,  
+    #   allowParallel = TRUE,
+    #   verboseIter = FALSE,
+    #   returnData = FALSE
+    # )
+    # xgbGrid <- 
+    #   expand.grid(nrounds = c(25, 50, 100),  # this is n_estimators in the python code above
+    #                        max_depth = c(10, 20),
+    #                        colsample_bytree = seq(0.5, 0.9, length.out = 4),
+    #                        eta = 0.1,
+    #                        gamma=0,
+    #                        min_child_weight = 1,
+    #                        subsample = 1
+    # )
+    # xgb_model = train(
+    #   xgb.DMatrix(as.matrix(confounders)), exposure,  
+    #   trControl = xgb_trcontrol,
+    #   tuneGrid = xgbGrid,
+    #   method = "xgbTree"
+    # )
+    # mean_predict = predict(xgb_model,  xgb.DMatrix(as.matrix(confounders)))
+    
+    # confounders = as.data.frame(confounders)
+    # GPS_mod <- xgboost(data = data.matrix(confounders), 
+    #                    label = exposure,
+    #                    nrounds = 50)
+    data_gps <- data.table(confounders, exposure)
+    GPS_mod <- lm(exposure ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6 + cf1^2 + cf2^2 + cf3^2 + cf4^2 + cf5^2 + cf6^2, data = data_gps)
+    mean_predict <- predict(GPS_mod, data_gps)
+    mod_sd <- sd(exposure - mean_predict)
+    feature_names <- GPS_mod$feature_names
+    GPS <- dnorm(exposure, mean = mean_predict, sd = mod_sd) # probability of exposure given confounders
+    Nm <- dnorm(exposure, mean = mean(exposure, na.rm = TRUE), sd = sd(exposure, na.rm = TRUE)) # General probability of exposure
+    data_example$IPW <- Nm / GPS #stabilized propensity score for really low or high weights 
+    # Subset model to middle 95 of weights (drop observations with extreme weights and estimate with remining data + weights)
+    upper_bound = quantile(data_example$IPW, 0.95)
+    lower_bound = 0
+    data_ipw = filter(data_example, between(IPW, lower_bound, upper_bound))
+    # Dropping these models now 
+    
+    weighted_fit <- glm(Y ~ exposure + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_ipw, family = family, weights = IPW)
+  }
+  
+
   
   # Now many points to evaluate the integral
   discrete_points = 1000
@@ -121,21 +172,39 @@ metrics_from_data <- function(just_plots = F, exposure = NA, relationship = "lin
   
   
   # Add predictions onto model
-  data_prediction[order(exposure), `:=`(linear_model = predict(linear_fit, data_prediction, type = "response"),
-                                        gam_model = predict(gam_fit, newdata = data_prediction, type = "response"),
-                                        true_fit = y_true)]
+  if (adjust_confounder == T) {
+    data_prediction[order(exposure), `:=`(linear_model = predict(linear_fit, data_prediction, type = "response"),
+                                          gam_model = predict(gam_fit, newdata = data_prediction, type = "response"),
+                                          weighted_gps = predict(weighted_fit, newdata = data_prediction, type = "response"),
+                                          true_fit = y_true)]
+  } else {
+    data_prediction[order(exposure), `:=`(linear_model = predict(linear_fit, data_prediction, type = "response"),
+                                          gam_model = predict(gam_fit, newdata = data_prediction, type = "response"),
+                                          true_fit = y_true)]
+  }
   # Calculate trimmed reference exposure value
   trimmed_reference <- sort(data_prediction$exposure)[5]
   
   # Remove influence of the intercept to just compare risk difference or relative risk 
   if (family == "gaussian") {
-    model_types <- c("linear_model", "gam_model")
+    if (adjust_confounder) {
+    model_types <- c("linear_model", "gam_model", "weighted_gps")
     data_prediction <- 
       data_prediction %>% 
       filter(exposure >= trimmed_reference) %>% 
       mutate(linear_model = linear_model - data_prediction[exposure == trimmed_reference, linear_model],
              gam_model = gam_model - data_prediction[exposure == trimmed_reference, gam_model],
+             weighted_gps = weighted_gps - data_prediction[exposure == trimmed_reference, weighted_gps],
              true_fit = true_fit - data_prediction[exposure == trimmed_reference, true_fit])
+    } else {
+      model_types <- c("linear_model", "gam_model")
+      data_prediction <- 
+        data_prediction %>% 
+        filter(exposure >= trimmed_reference) %>% 
+        mutate(linear_model = linear_model - data_prediction[exposure == trimmed_reference, linear_model],
+               gam_model = gam_model - data_prediction[exposure == trimmed_reference, gam_model],
+               true_fit = true_fit - data_prediction[exposure == trimmed_reference, true_fit])
+    }
     
     # old way of doing it with using min as reference
     # data_prediction <- 

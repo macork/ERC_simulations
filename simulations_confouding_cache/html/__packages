@@ -11,3 +11,4 @@ forcats
 data.table
 MASS
 ggeffects
+xgboost

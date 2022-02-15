@@ -3,8 +3,8 @@ title: "Confouding adjustment"
 author: "Michael Cork"
 date: "1/20/2022"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -15,13 +15,16 @@ library(data.table)
 library(MASS)
 library(ggeffects)
 library(parallel)
+library(xgboost)
 ```
 
+# Data generating mechanism
+We evaluate the performance of our methods for fitting ERC curves in a variety of data settings. In each setting, we generate six confounders $(C_1, C_2, ..., C_6)$, which include a combination of continuous and categorical variables.
+$$ C_1, ..., C_4 \sim N(0, I_4), C_5 \sim V \: \{-2, 2 \}, C_6 \sim U \: (-3, 3) $$
 
-## Confounding
+Where $N(0, I_4)$ denotes a multivariate normal distribution, $V \: \{-2, 2 \}$ denotes a discrete uniform distribution, and $U(3, 3)$ denotes a continuous uniform distribution. We generate the exposure based on six  different specifications of the relationship between confounding and exposure based on work by Xiao. 
 
-We now look to generate the exposure data using different specifications of the relationship between confounding and exposure based on work by Xiao. 
-We generate $E$ using six different specifications that rely on the function $\gamma(\mathbf{C})=-0.8+$ $(0.1,0.1,-0.1,0.2,0.1,0.1)$ C. Specifically,
+The exposure $E$ is generated using six different specifications that rely on the function $\gamma(\mathbf{C})=-0.8+$ $(0.1,0.1,-0.1,0.2,0.1,0.1)$ C. Specifically,
 
 1. $E=9 \times \gamma(\mathbf{C})+17+N(0,5)$;
 2. $E=15 \times \gamma(\mathbf{C})+22+T(2)$;
@@ -30,7 +33,9 @@ We generate $E$ using six different specifications that rely on the function $\g
 5. $E=42 \times \frac{1}{1+\exp (\gamma(\mathbf{C})\})}-18+N(0,5)$;
 6. $E=7 \times \log (\gamma(\mathbf{C}))+13+N(0,4)$;
 
-One thing to note is that for 6), in actuality it is using $W=7 \times \log (|\gamma(\mathbf{C})|)+13+N(0,4)$. I then ran through three different iterations of the sample size (N = 200, 1000, 5000) and then fit the following outcome model: 
+Scenario 1 has a linear relationship between $E$ and $C$ and GPS values are not heavy tailed. In scenario 2, the relationship between $E$ and $C$ stays linear, but GPS values are heavy tailed and include extreme values.The relationship between $E$ and $C$ in scenarios 3-6 are all non-linear, but do not have extreme values like scenario 2. 
+
+One additional thing to note is that for scenario 6, in actuality it is using $W=7 \times \log (|\gamma(\mathbf{C})|)+13+N(0,4)$. I then ran through three different iterations of the sample size (N = 200, 1000, 5000) and then fit the following outcome model: 
 
 $$
 \begin{split} 
@@ -39,16 +44,117 @@ Y|E,C &\sim N(\mu(E, C), 10^2) \\
 \end{split}
 $$
 
+Before fitting both a linear and GAM model mimic a linear and nonlinear exposure-response curve, I wanted to investigate how a linear function of confounders fits the exposure data. First I do not include any random components, so we would expect that a linear model for scenario 1 & 2 would perfectly fit the data and indeed that is what we see:
+
+```{r}
+source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
+cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
+
+r_squared <- 
+  rbindlist(mclapply(1:1000, mc.cores = 10, function(sim){
+    sample_size = 100
+    cf <- mvrnorm(n = sample_size,
+                      mu = rep(0, 4),
+                      Sigma = diag(4))
+    cf5 <- sample(c((-2):2), sample_size, replace = T)
+    cf6 <- runif(sample_size, min = -3, max = 3)
+    confounders = cbind(cf, cf5, cf6)
+    colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+    rbindlist(lapply(c(1:6), function(gps_mod){
+      if (gps_mod == 1) {
+        exposure = 9 * cov_function(confounders) + 17 
+      } else if (gps_mod == 2) {
+        exposure = 15 *  cov_function(confounders) + 17
+      } else if (gps_mod == 3) {
+        exposure = 9 * cov_function(confounders) + 3 / 2 * (confounders[, "cf3"]) ^
+          2 + 15
+      } else if (gps_mod == 4) {
+        exposure = 49 * exp(cov_function(confounders)) / (1 + exp(cov_function(confounders))) - 6
+      } else if (gps_mod == 5) {
+        exposure = 42 * 1 / (1 + exp(cov_function(confounders))) - 18
+      } else if (gps_mod == 6) {
+        exposure = 7 * log(abs(cov_function(confounders))) + 13 
+      }
+    data = data.table(cbind(exposure, confounders))
+    lm_model <- lm(exposure ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data)
+    data.table(gps_mod = gps_mod, r_squared = summary(lm_model)$adj.r.squared)
+    }))
+  }))
+
+r_squared %>%
+  dplyr::group_by(gps_mod) %>%
+  dplyr::summarize(mean = mean(r_squared),
+                   lower = quantile(r_squared, 0.1),
+                   upper = quantile(r_squared, 0.9)) %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, 
+                      x = factor(gps_mod)), position = position_dodge(.5)) + 
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Adjusted r squared", title = "Adjusted r-squared when removing noise") + 
+  theme_bw() +
+  coord_cartesian(ylim = c(0, 1))
+  
+```
+
+
+Now we include back the noise terms to see how adjusting for confounders linearly does in terms of R-square value:
+```{r}
+r_squared <- 
+  rbindlist(mclapply(1:1000, mc.cores = 10, function(sim){
+    sample_size = 100
+    cf <- mvrnorm(n = sample_size,
+                      mu = rep(0, 4),
+                      Sigma = diag(4))
+    cf5 <- sample(c((-2):2), sample_size, replace = T)
+    cf6 <- runif(sample_size, min = -3, max = 3)
+    confounders = cbind(cf, cf5, cf6)
+    colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+    rbindlist(lapply(c(1:6), function(gps_mod){
+       if (gps_mod == 1) {
+            exposure = 9 * cov_function(confounders) + 17 + rnorm(sample_size, mean = 0, sd =  5)
+          } else if (gps_mod == 2) {
+            exposure = 15 *  cov_function(confounders) + 17 + rt(sample_size, df = 2)
+          } else if (gps_mod == 3) {
+            exposure = 9 * cov_function(confounders) + 3/2* (confounders[, "cf3"])^2 + 15 + rnorm(sample_size, mean = 0, sd =  5)
+          } else if (gps_mod == 4) {
+            exposure = 49 * exp(cov_function(confounders)) / (1 + exp(cov_function(confounders))) - 6 + rnorm(sample_size, mean = 0, sd = 5)
+          } else if (gps_mod == 5) {
+            exposure = 42 * 1 / (1 + exp(cov_function(confounders))) - 18 + rnorm(sample_size, mean = 0, sd = 5)
+          } else if (gps_mod == 6) {
+            exposure = 7 * log(abs(cov_function(confounders))) + 13 + rnorm(sample_size, mean = 0, sd = 4)
+          }
+    data = data.table(cbind(exposure, confounders))
+    lm_model <- lm(exposure ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data)
+    data.table(gps_mod = gps_mod, r_squared = summary(lm_model)$adj.r.squared)
+    }))
+  }))
+
+r_squared %>%
+  dplyr::group_by(gps_mod) %>%
+  dplyr::summarize(mean = mean(r_squared),
+                   lower = quantile(r_squared, 0.1),
+                   upper = quantile(r_squared, 0.9)) %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, 
+                      x = factor(gps_mod)), position = position_dodge(.5)) + 
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Adjusted r squared", title = "Adjusted r-squared with noise term") + 
+  theme_bw() +
+  coord_cartesian(ylim = c(0, 1))
+
+
+```
+
 ### Bias without linear adjustment for confounders
 I first ran through each model to see the bias without adjustment for confounders to see the baseline of how biased the results might be without proper adjustment. 
 
-```{r, echo = F, cache = T}
+```{r, echo = F, cache = F}
 set.seed(23)
 source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
 cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
 
 sim_data <- 
-  rbindlist(lapply(c(200), function(sample_size){
+  rbindlist(lapply(c(200, 1000), function(sample_size){
     # Iterate through several simulations
     rbindlist(mclapply(c(1:100), mc.cores = 10, function(sim) {
       cf <- mvrnorm(n = sample_size,
@@ -103,13 +209,13 @@ sim_data <-
   }))
 
 # Working here on getting that data working, so far now luck 
-
  # sim_data <-
  #  sim_data %>%
  #  mutate(bias = abs(bias))
  
 plot_data <- 
   sim_data %>% 
+  mutate(bias = abs(bias)) %>% 
   tidyr::pivot_longer(c("bias", "mse")) %>% 
   mutate(name = factor(name))  %>% 
   dplyr::group_by(model, gps_mod, sample_size, name) %>% 
@@ -156,8 +262,9 @@ plot_data %>%
 
 ```
 
-### With adjustement for confounders
-Now I linearly adjust for confounders in the additive and linear model and should see improvements, especially in scenario 1, 2. 
+
+## With adjustement for confounders
+Now I linearly adjust for confounders in the additive and linear model and we see improvements, especially in scenario 1 and 2. I also include a weighted propensity score analysis that uses a linear model with all interactions included to generate a propensity score. I trim extreme values for the weights (95th percentile) beofre the analysis stage. (Xgboost didn't seem to perform well)
 
 ```{r, echo = F, cache = T}
 set.seed(23)
@@ -165,7 +272,7 @@ source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
 cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
 
 sim_data <- 
-  rbindlist(lapply(c(200), function(sample_size){
+  rbindlist(lapply(c(200, 1000), function(sample_size){
     # Iterate through several simulations
     rbindlist(mclapply(c(1:100), mc.cores = 10, function(sim) {
       cf <- mvrnorm(n = sample_size,
@@ -192,20 +299,6 @@ sim_data <-
             exposure = 7 * log(abs(cov_function(confounders))) + 13 + rnorm(sample_size, mean = 0, sd = 4)
           }
           
-          # # Commented out is what we would do if we wanted replicates
-          # sim_results <-
-          #   mclapply(1:50, mc.cores = 10, function(i) {
-          #   metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", 
-          #                     sample_size = sample_size, family = "gaussian", adjust_confounder = F)
-          # })
-          # 
-          # # now extract metric results and sim results
-          # metrics_results <- 
-          #   rbindlist(lapply(sim_results, function(sim){
-          #     return(sim[[1]])
-          # }))
-          # final_results <- metrics_results[, .(bias = mean(bias), mse = mean(mse)), by = .(model)]
-          
           final_results <- 
             metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", 
                               sample_size = sample_size, family = "gaussian", adjust_confounder = T)$metrics
@@ -227,6 +320,7 @@ sim_data <-
  
 plot_data <- 
   sim_data %>% 
+  mutate(bias = abs(bias)) %>% 
   tidyr::pivot_longer(c("bias", "mse")) %>% 
   mutate(name = factor(name))  %>% 
   dplyr::group_by(model, gps_mod, sample_size, name) %>% 
@@ -249,6 +343,16 @@ plot_data %>%
   facet_grid(sample_size ~ name, scales = "free")
 
 plot_data %>% 
+  filter(name == "Bias", gps_mod != 2) %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  theme_bw() + 
+  facet_grid(sample_size ~ name, scales = "free")
+
+
+plot_data %>% 
   filter(name == "MSE") %>% 
   ggplot() + 
   geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) + 
@@ -265,6 +369,103 @@ plot_data %>%
 #   theme_bw() + 
 #   facet_grid(sample_size ~ name)
 
+```
+
+## No noise term 
+Now I fit without any noise terms included in the model
+```{r, echo = F, cache = T}
+set.seed(23)
+source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
+cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
+
+sim_data <- 
+  rbindlist(lapply(c(200, 1000), function(sample_size){
+    # Iterate through several simulations
+    rbindlist(mclapply(c(1:100), mc.cores = 10, function(sim) {
+      cf <- mvrnorm(n = sample_size,
+                  mu = rep(0, 4),
+                  Sigma = diag(4))
+      cf5 <- sample(c((-2):2), sample_size, replace = T)
+      cf6 <- runif(sample_size, min = -3, max = 3)
+      confounders = cbind(cf, cf5, cf6)
+      colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+    
+      sim_data <- 
+        rbindlist(lapply(c(1:6), function(gps_mod) {
+          if (gps_mod == 1) {
+            exposure = 9 * cov_function(confounders) + 17 
+          } else if (gps_mod == 2) {
+            exposure = 15 *  cov_function(confounders) + 17 
+          } else if (gps_mod == 3) {
+            exposure = 9 * cov_function(confounders) + 3/2* (confounders[, "cf3"])^2 + 15
+          } else if (gps_mod == 4) {
+            exposure = 49 * exp(cov_function(confounders)) / (1 + exp(cov_function(confounders))) - 6
+          } else if (gps_mod == 5) {
+            exposure = 42 * 1 / (1 + exp(cov_function(confounders))) - 18 
+          } else if (gps_mod == 6) {
+            exposure = 7 * log(abs(cov_function(confounders))) + 13
+          }
+          
+          final_results <- 
+            metrics_from_data(exposure = exposure, confounders = confounders, relationship = "linear", 
+                              sample_size = sample_size, family = "gaussian", adjust_confounder = T)$metrics
+          
+          final_results[, gps_mod := gps_mod]
+          final_results[, sample_size := sample_size]
+          final_results[, sim := sim]
+          return(final_results)
+        }))
+      return(sim_data)
+    }))
+  }))
+
+# Working here on getting that data working, so far now luck 
+
+ # sim_data <-
+ #  sim_data %>%
+ #  mutate(bias = abs(bias))
+ 
+plot_data <- 
+  sim_data %>% 
+  mutate(absolute_bias = abs(bias)) %>% 
+  tidyr::pivot_longer(c("bias", "absolute_bias", "mse")) %>% 
+  mutate(name = factor(name))  %>% 
+  dplyr::group_by(model, gps_mod, sample_size, name) %>% 
+  dplyr::summarize(mean = mean(value), 
+            lower = quantile(value, 0.1),
+            upper = quantile(value, 0.9))
+
+# Now make the correct boxplot to compare the results 
+# What is the metric being used by Boyu? 
+
+#levels(plot_data$name) <- c("Bias","Absolute_Bias", "MSE")
+
+plot_data %>% 
+  filter(name == "bias") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  theme_bw() + 
+  facet_grid(sample_size ~ name, scales = "free")
+
+plot_data %>% 
+  filter(name == "absolute_bias") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  theme_bw() + 
+  facet_grid(sample_size ~ name, scales = "free")
+
+plot_data %>% 
+  filter(name == "mse") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  theme_bw() + 
+  facet_grid(sample_size ~ name, scales = "free")
 ```
 
 ### Increase effect of confounding 
@@ -334,6 +535,7 @@ adjusted_sim <-
  
 plot_data <- 
   adjusted_sim %>% 
+  mutate(bias = abs(bias)) %>% 
   tidyr::pivot_longer(c("bias", "mse")) %>% 
   mutate(name = factor(name))  %>% 
   dplyr::group_by(model, gps_mod, sample_size, exp_conf_ratio, name) %>% 
@@ -366,7 +568,9 @@ plot_data %>%
   facet_grid(exp_conf_ratio ~ name, scales = "free")
 
 ```
-I then repeat with adjustment for linear confounding
+
+
+I then repeat with adjustment for linear confounding: 
 
 ```{r, cache = T, echo = F, eval = T}
 set.seed(23)
@@ -431,6 +635,7 @@ adjusted_sim <-
  
 plot_data <- 
   adjusted_sim %>% 
+  mutate(bias = abs(bias)) %>% 
   tidyr::pivot_longer(c("bias", "mse")) %>% 
   mutate(name = factor(name))  %>% 
   dplyr::group_by(model, gps_mod, sample_size, exp_conf_ratio, name) %>% 
@@ -493,26 +698,34 @@ c(2, 2, 3, -1, -2, -2) %*% t(confounders) %>% hist()
 ```
 
 
+Now use GPS weighted adjustement as well: 
 
-* Recode how you calculate the absolute bias and recode how you are varying the confoudning each time. Then run throught the simulations again and have a better description of what is going on. Dan is really good at explaining, so maybe check in with him
+```{r, eval = F}
+GPS_mod <- xgboost(data = data.matrix(covariates[, c(4:19)]), 
+                   label = covariates$pm25_ensemble,
+                   nrounds = 50)
+mod_sd <- sd(covariates$pm25_ensemble - predict(GPS_mod, data.matrix(covariates[, c(4:19)])))
+feature_names <- GPS_mod$feature_names
+covariates$GPS <- dnorm(covariates$pm25_ensemble,
+                        mean = predict(GPS_mod, data.matrix(covariates[, c(4:19)])),
+                        sd = sd(covariates$pm25_ensemble - predict(GPS_mod, data.matrix(covariates[, c(4:19)]))))
+Nm <- dnorm(covariates$pm25_ensemble,
+            mean = mean(covariates$pm25_ensemble, na.rm = TRUE),
+            sd = sd(covariates$pm25_ensemble, na.rm = TRUE))
+covariates$IPW <- Nm / (covariates$GPS)
+covariates <- covariates[, c("zip", "year", "IPW", "GPS")]
 
-* Reach out to Dan on a good time to meet weekly
+```
 
-* Email esolinga@hsph.harvard.edu, sluvisi@hsph.harvard.edu, francesca for keys to building
 
-* Add causalGPS to type of fit here, and see how it does in terms of bias compared to others (should see difference since it is correctly accouting in all cases)
 
-scale by sd(e) / sd(x*c) different noise settings. Inject more random noise. Should have bigger sample and more overalp and a little bit lower bias. Bias is going to remain to an extent. The model wont be consistent becuase the model is wrong, remain pretty unbiased. When it is not linearly adjusted. 
+* Add causalGPS to type of fit here, and see how it does in terms of bias compared to others (should see difference since it is correctly accounting in all cases)
 
-Take .1 * E and just distribute its 
+* Move to Poisson 
 
-Could include log of gamma c and have that as a term in the model... would be correct. You could make a truth model 
+* Move forward on getting causalGPS package to work 
 
-sd(0.1 * exposure) / sd(c(2, 2, 3, -1, -2, -2) %*% t(confounders))
-
-0.1*W=0.1*9*gamma(C)+0.1*17+0.1*N(0,5)
-20+0.1*9*gamma(C)+0.1*17-vec*C
-0.1*N(0.5)
+* Add more propensity score models to analysis 
 
 
 ```{r, echo = F, cache = F, eval = F}
