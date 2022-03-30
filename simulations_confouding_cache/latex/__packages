@@ -11,3 +11,13 @@ forcats
 data.table
 MASS
 ggeffects
+xgboost
+nnls
+foreach
+gam
+SuperLearner
+lattice
+survival
+Formula
+Hmisc
+weights
