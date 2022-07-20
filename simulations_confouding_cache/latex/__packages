@@ -1,4 +1,3 @@
-base
 tidyverse
 ggplot2
 tibble
@@ -21,3 +20,15 @@ survival
 Formula
 Hmisc
 weights
+MatchIt
+nnet
+numDeriv
+Matrix
+glmnet
+CBPS
+WeightIt
+chngpt
+cobalt
+usethis
+devtools
+CausalGPS

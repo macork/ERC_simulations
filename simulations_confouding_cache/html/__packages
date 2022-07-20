@@ -1,4 +1,3 @@
-base
 tidyverse
 ggplot2
 tibble
@@ -28,3 +27,8 @@ Matrix
 glmnet
 CBPS
 WeightIt
+chngpt
+usethis
+devtools
+CausalGPS
+cobalt
