@@ -1,4 +1,4 @@
-# This script is for deploying a grid search to find the right hyperparameter settings for my simulation
+# This script is for deploying a grid search to find the right hyperparameter settings for my simulation 
 rm(list = ls())
 library(data.table)
 library(tidyverse)
@@ -373,8 +373,8 @@ corr_search_results_all <- readRDS(file = "~/Desktop/Francesca_research/Simulati
 corr_search_results_all %>%
   rbindlist() %>% 
   ggplot() + 
-  geom_point(aes(x = delat, y = mean_corr)) + 
-  geom_smooth(aes(x = delat, y = mean_corr)) + 
+  geom_point(aes(x = lambda, y = mean_corr)) + 
+  geom_smooth(aes(x = lambda, y = mean_corr), method = "lm") + 
   facet_wrap(~ exposure_type)
 
 corr_search_results_all %>% 

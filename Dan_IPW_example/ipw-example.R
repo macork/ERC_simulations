@@ -1,3 +1,7 @@
+# This code was created by Dan as an example to show where IPW weighting was improving effect estimates as compared to fitting a linear model
+# Most of this has been moved to simulations_confounding function 
+
+
 rm(list = ls())
 library(tidyverse)
 library(data.table)

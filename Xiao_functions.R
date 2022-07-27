@@ -1,4 +1,4 @@
-# Xiao's old matching functions 
+# Xiao's old matching functions that I reference when understanding causalGPS
 #' GPS Matching function to create matched set.
 #'
 #' @param Y a vector of observed outcome variable.

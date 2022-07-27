@@ -188,105 +188,90 @@ r_squared %>%
 
 Our first simulation can compare without adjustment for covariates in the outcome model, where we show that the propensity score model outperforms substantially
 
-Note that running the CausalGPS package in parallel requires that I do not use mclapply and instead parLapply for some reason... so now I am going to be switching over to that .
+Note that running the CausalGPS package in parallel requires that I do not use mclapply and instead parLapply for some reason... so now I am going to be switching over to that
+
 ```{r, echo = F, eval = T, cache = T}
 set.seed(23)
 source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
 cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
 
-med_pred_sample <- 
-  lapply(c(1000), function(sample_size){
-    # Iterate through several simulations
-    med_pred_sim <- 
-      lapply(c(1:1), function(sim) {
-        cf <- mvrnorm(n = sample_size,
-                    mu = rep(0, 4),
-                    Sigma = diag(4))
-        cf5 <- sample(c((-2):2), sample_size, replace = T)
-        cf6 <- runif(sample_size, min = -3, max = 3)
-        confounders = cbind(cf, cf5, cf6)
-        colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+sample_size = 1000
+med_pred_sample <- list()
+med_pred_gps <- list()
+
+# Iterate through several simulations
+for (sim in 1:10) {
+  cf <- mvrnorm(n = sample_size,
+                mu = rep(0, 4),
+                Sigma = diag(4))
+  cf5 <- sample(c((-2):2), sample_size, replace = T)
+  cf6 <- runif(sample_size, min = -3, max = 3)
+  confounders = cbind(cf, cf5, cf6)
+  colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
       
-        med_pred_gps <- 
-          lapply(c(1:4), function(gps_mod) {
-            if (gps_mod == 1) {
-              exposure = scale_exposure(cov_function(confounders)) + rnorm(sample_size, mean = 0, sd = sqrt(10))
-            } else if (gps_mod == 2) {
-              exposure = scale_exposure(cov_function(confounders)) + (sqrt(5)) * rt(sample_size, df = 3)
-            } else if (gps_mod == 3) {
-              exposure = scale_exposure(cov_function(confounders) + 0.5 * (confounders[, "cf3"]) ^ 2) + rnorm(sample_size, mean = 0, sd = sqrt(10))
-            } else if (gps_mod == 4) {
-              exposure = scale_exposure(cov_function(confounders) + 0.5 * (confounders[, "cf3"]) ^ 2 + 0.5 * (confounders[, "cf1"]) * (confounders[, "cf5"])) + rnorm(sample_size, mean = 0, sd = sqrt(10))
-            }
-        
-            # correlation results if we want to check at this stage
-        # correlation_table <-
-        # rbindlist(lapply(names(data.frame(confounders)), function(cov){
-        #   pre_cor <- abs(cor(exposure, confounders[, cov]))
-        #   data.table(covariate = cov, pre_cor = pre_cor)
-        # }))
-        # 
-        # correlation_table
+  # Loop through all GPS mods
+  med_pred_gps[[sim]] <- list()
+  for (gps_mod in 1:4) {
+    # Generate appropriate exposure (make this a function later)
+      if (gps_mod == 1) {
+        exposure = scale_exposure(cov_function(confounders)) + rnorm(sample_size, mean = 0, sd = sqrt(10))
+      } else if (gps_mod == 2) {
+        exposure = scale_exposure(cov_function(confounders)) + (sqrt(5)) * rt(sample_size, df = 3)
+      } else if (gps_mod == 3) {
+        exposure = scale_exposure(cov_function(confounders) + 0.5 * (confounders[, "cf3"]) ^ 2) + rnorm(sample_size, mean = 0, sd = sqrt(10))
+      } else if (gps_mod == 4) {
+        exposure = scale_exposure(cov_function(confounders) + 0.5 * (confounders[, "cf3"]) ^ 2 + 0.5 * (confounders[, "cf1"]) * (confounders[, "cf5"])) + rnorm(sample_size, mean = 0, sd = sqrt(10))
+        }
              
-            
-            # Get metrics and predictions from sample
-            metrics_predictions <- 
-              metrics_from_data(exposure = exposure, confounders = confounders, exposure_relationship = "linear", 
-                                outcome_relationship = "linear", sample_size = sample_size, family = "gaussian", adjust_confounder = F, causal_gps = T)
-    
-            metrics <- metrics_predictions$metrics
-            predictions <-  metrics_predictions$predictions
-            cor_table <- metrics_predictions$cor_table
-            
-            metrics[, gps_mod := gps_mod]
-            metrics[, sample_size := sample_size]
-            metrics[, sim := sim]
-            
-            predictions[, gps_mod := gps_mod]
-            predictions[, sample_size := sample_size]
-            predictions[, sim := sim]
-            
-            
-            
-            # put method for correlation table
-            cor_table[, method := "ipw"]
-            cor_table[, delta := 0]
-            
-            # Add on correlation from causalgps package
-            cor_default <- 
-              data.table(covariate = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6"), 
-                       pre_cor = metrics_predictions[[4]]$original_corr_results$absolute_corr, 
-                       post_cor = metrics_predictions[[4]]$adjusted_corr_results$absolute_corr,
-                       method = "causal_gps_default",
-                       delta =  metrics_predictions[[4]]$params$delta_n)
-            
-            cor_tuned <- 
-              data.table(covariate = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6"), 
-                       pre_cor = metrics_predictions[[5]]$original_corr_results$absolute_corr, 
-                       post_cor = metrics_predictions[[5]]$adjusted_corr_results$absolute_corr,
-                       method = "causal_gps_tuned", 
-                       delta =  metrics_predictions[[5]]$params$delta_n)
-            
-            cor_table <- rbind(cor_table, cor_default, cor_tuned)
-            
-            cor_table[, gps_mod := gps_mod]
-            cor_table[, sample_size := sample_size]
-            cor_table[, sim := sim]
-            
-            return(list(metrics = metrics, predictions = predictions, cor_table = cor_table))
-          })
-        
-        metrics_gps <- rbindlist(lapply(med_pred_gps, function(x) x[[1]]))
-        predictions_gps <- rbindlist(lapply(med_pred_gps, function(x) x[[2]]))
-        correlation_gps <- rbindlist(lapply(med_pred_gps, function(x) x[[3]]))
-        
-        return(list(metrics_gps, predictions_gps, correlation_gps))
-      })
-    metrics_sim <- rbindlist(lapply(med_pred_sim, function(x) x[[1]]))
-    predictions_sim <- rbindlist(lapply(med_pred_sim, function(x) x[[2]]))
-    correlation_sim <- rbindlist(lapply(med_pred_sim, function(x) x[[3]]))
-    return(list(metrics_sim, predictions_sim, correlation_sim))
-  })
+      # Get metrics and predictions from sample
+      metrics_predictions <- 
+        metrics_from_data(exposure = exposure, confounders = confounders, exposure_relationship = "linear",
+                          outcome_relationship = "linear", sample_size = sample_size, family = "gaussian", adjust_confounder = F, causal_gps = T)
+      
+      metrics <- metrics_predictions$metrics
+      predictions <-  metrics_predictions$predictions
+      cor_table <- metrics_predictions$cor_table
+      
+      # Add appropriate columns
+      metrics <- metrics %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim)
+      predictions <- predictions %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim)
+      
+      # put method for correlation table
+      cor_table <- cor_table %>% mutate(method = "ipw", delta = 0)
+      
+      # Add on correlation from causalgps package
+      cor_default <-
+        data.table(covariate = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6"),
+                   pre_cor = metrics_predictions[[4]]$original_corr_results$absolute_corr,
+                   post_cor = metrics_predictions[[4]]$adjusted_corr_results$absolute_corr,
+                   method = "causal_gps_default",
+                   delta =  metrics_predictions[[4]]$params$delta_n)
+      
+      cor_tuned <-
+        data.table(covariate = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6"),
+                   pre_cor = metrics_predictions[[5]]$original_corr_results$absolute_corr,
+                   post_cor = metrics_predictions[[5]]$adjusted_corr_results$absolute_corr,
+                   method = "causal_gps_tuned",
+                   delta =  metrics_predictions[[5]]$params$delta_n)
+      
+      cor_table <- rbind(cor_table, cor_default, cor_tuned)
+      cor_table <- cor_table %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim)
+      
+      # Store in list
+      med_pred_gps[[sim]][[gps_mod]] <- list(data.table(metrics),data.table(predictions), data.table(cor_table))
+    }
+  
+  # Unpack list 
+  metrics_gps <-rbindlist(lapply(med_pred_gps[[sim]], function(x) x[[1]]))
+  predictions_gps <- rbindlist(lapply(med_pred_gps[[sim]], function(x) x[[2]]))
+  correlation_gps <- rbindlist(lapply(med_pred_gps[[sim]], function(x) x[[3]]))
+  
+  med_pred_sample[[sim]] <- list(metrics_gps, predictions_gps, correlation_gps)
+}
+
+# Save files and make way date stamp them soon
+saveRDS(med_pred_sample, file = paste0("~/Desktop/Francesca_research/Simulation_studies/med_pred_sample_linear_noadjust.RDS"))
+
 
 # Unpack the metrics and predictions
 metrics <- rbindlist(lapply(med_pred_sample, function(x) x[[1]]))
@@ -322,6 +307,7 @@ gg_correlation_ipw <-
    coord_flip() + 
    facet_wrap(~ gps_mod) + 
    labs(y = "Absolute correlation", x = "Covariate", title = "Comparing covariate balance under different design settings for IPW")
+gg_correlation_ipw
 
 gg_correlation_default <-
   gps_correlation %>% 
@@ -457,6 +443,272 @@ ggplot() +
 Now we if we adjust for confounders (in this case the propensity score models would be doubly robust)
 
 ```{r, echo = F, eval = T, cache = T}
+set.seed(23)
+source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
+cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
+
+sample_size = 1000
+med_pred_sample <- list()
+med_pred_gps <- list()
+
+# Iterate through several simulations
+for (sim in 6:10) {
+  cf <- mvrnorm(n = sample_size,
+                mu = rep(0, 4),
+                Sigma = diag(4))
+  cf5 <- sample(c((-2):2), sample_size, replace = T)
+  cf6 <- runif(sample_size, min = -3, max = 3)
+  confounders = cbind(cf, cf5, cf6)
+  colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+      
+  # Loop through all GPS mods
+  med_pred_gps[[sim]] <- list()
+  for (gps_mod in 1:4) {
+    # Generate appropriate exposure (make this a function later)
+      if (gps_mod == 1) {
+        exposure = scale_exposure(cov_function(confounders)) + rnorm(sample_size, mean = 0, sd = sqrt(10))
+      } else if (gps_mod == 2) {
+        exposure = scale_exposure(cov_function(confounders)) + (sqrt(5)) * rt(sample_size, df = 3)
+      } else if (gps_mod == 3) {
+        exposure = scale_exposure(cov_function(confounders) + 0.5 * (confounders[, "cf3"]) ^ 2) + rnorm(sample_size, mean = 0, sd = sqrt(10))
+      } else if (gps_mod == 4) {
+        exposure = scale_exposure(cov_function(confounders) + 0.5 * (confounders[, "cf3"]) ^ 2 + 0.5 * (confounders[, "cf1"]) * (confounders[, "cf5"])) + rnorm(sample_size, mean = 0, sd = sqrt(10))
+        }
+             
+      # Get metrics and predictions from sample
+      metrics_predictions <- 
+        metrics_from_data(exposure = exposure, confounders = confounders, exposure_relationship = "linear",
+                          outcome_relationship = "linear", sample_size = sample_size, family = "gaussian", adjust_confounder = T, causal_gps = T)
+      
+      metrics <- metrics_predictions$metrics
+      predictions <-  metrics_predictions$predictions
+      cor_table <- metrics_predictions$cor_table
+      
+      # Add appropriate columns
+      metrics <- metrics %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim)
+      predictions <- predictions %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim)
+      
+      # put method for correlation table
+      cor_table <- cor_table %>% mutate(method = "ipw", delta = 0)
+      
+      # Add on correlation from causalgps package
+      cor_default <-
+        data.table(covariate = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6"),
+                   pre_cor = metrics_predictions[[4]]$original_corr_results$absolute_corr,
+                   post_cor = metrics_predictions[[4]]$adjusted_corr_results$absolute_corr,
+                   method = "causal_gps_default",
+                   delta =  metrics_predictions[[4]]$params$delta_n)
+      
+      cor_tuned <-
+        data.table(covariate = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6"),
+                   pre_cor = metrics_predictions[[5]]$original_corr_results$absolute_corr,
+                   post_cor = metrics_predictions[[5]]$adjusted_corr_results$absolute_corr,
+                   method = "causal_gps_tuned",
+                   delta =  metrics_predictions[[5]]$params$delta_n)
+      
+      cor_table <- rbind(cor_table, cor_default, cor_tuned)
+      cor_table <- cor_table %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim)
+      
+      # Store in list
+      med_pred_gps[[sim]][[gps_mod]] <- list(data.table(metrics),data.table(predictions), data.table(cor_table))
+    }
+  
+  # Unpack list 
+  metrics_gps <-rbindlist(lapply(med_pred_gps[[sim]], function(x) x[[1]]))
+  predictions_gps <- rbindlist(lapply(med_pred_gps[[sim]], function(x) x[[2]]))
+  correlation_gps <- rbindlist(lapply(med_pred_gps[[sim]], function(x) x[[3]]))
+  
+  med_pred_sample[[sim]] <- list(metrics_gps, predictions_gps, correlation_gps)
+}
+
+# Save files and make way date stamp them soon
+saveRDS(med_pred_sample, file = paste0("~/Desktop/Francesca_research/Simulation_studies/med_pred_sample_linear.RDS"))
+
+
+# Unpack the metrics and predictions
+metrics <- rbindlist(lapply(med_pred_sample, function(x) x[[1]]))
+predictions <- rbindlist(lapply(med_pred_sample, function(x) x[[2]]))
+gps_correlation <- rbindlist(lapply(med_pred_sample, function(x) x[[3]]))
+
+# Graph the chain points found 
+change_points = unique(predictions$change_point)
+
+data.table(change_points) %>% 
+  ggplot() + 
+  geom_histogram(aes(x = change_points), bins = 20) + 
+  theme_classic() + 
+  labs(x = "Change point", y = "Count", title = "Change point distribution")
+
+
+gg_correlation_ipw <-
+  gps_correlation %>% 
+  filter(method == "ipw") %>% 
+  group_by(gps_mod, covariate) %>% 
+  dplyr::summarize(pre_weight = mean(pre_cor), post_weight = mean(post_cor)) %>% 
+  pivot_longer(c("pre_weight", "post_weight")) %>%
+  mutate(name = factor(name, levels = unique(name))) %>%
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                             gps_mod == 2 ~ "heavy tail", 
+                             gps_mod == 3 ~ "nonlinear", 
+                             gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+   ggplot(aes(x = covariate, y = value, color = name, group = name)) +
+   geom_hline(aes(yintercept = 0.1)) + 
+   geom_point() +
+   geom_line() +
+   theme_bw() +
+   coord_flip() + 
+   facet_wrap(~ gps_mod) + 
+   labs(y = "Absolute correlation", x = "Covariate", title = "Comparing covariate balance under different design settings for IPW")
+gg_correlation_ipw
+
+gg_correlation_default <-
+  gps_correlation %>% 
+  filter(method == "causal_gps_default") %>% 
+  group_by(gps_mod, covariate) %>% 
+  dplyr::summarize(pre_weight = mean(pre_cor), post_weight = mean(post_cor)) %>% 
+  pivot_longer(c("pre_weight", "post_weight")) %>%
+  mutate(name = factor(name, levels = unique(name))) %>%
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                             gps_mod == 2 ~ "heavy tail", 
+                             gps_mod == 3 ~ "nonlinear", 
+                             gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+   ggplot(aes(x = covariate, y = value, color = name, group = name)) +
+   geom_hline(aes(yintercept = 0.1)) + 
+   geom_point() +
+   geom_line() +
+   theme_bw() +
+   coord_flip() + 
+   facet_wrap(~ gps_mod) + 
+   labs(y = "Absolute correlation", x = "Covariate", title = "Comparing covariate balance under different design settings for causal GPS default")
+    
+gg_correlation_default
+
+gg_correlation_tuned <-
+  gps_correlation %>% 
+  filter(method == "causal_gps_tuned") %>% 
+  group_by(gps_mod, covariate) %>% 
+  dplyr::summarize(pre_weight = mean(pre_cor), post_weight = mean(post_cor)) %>% 
+  pivot_longer(c("pre_weight", "post_weight")) %>%
+  mutate(name = factor(name, levels = unique(name))) %>%
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                             gps_mod == 2 ~ "heavy tail", 
+                             gps_mod == 3 ~ "nonlinear", 
+                             gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+   ggplot(aes(x = covariate, y = value, color = name, group = name)) +
+   geom_hline(aes(yintercept = 0.1)) + 
+   geom_point() +
+   geom_line() +
+   theme_bw() +
+   coord_flip() + 
+   facet_wrap(~ gps_mod) + 
+   labs(y = "Absolute correlation", x = "Covariate", title = "Comparing covariate balance under different design settings for causal GPS default")
+    
+gg_correlation_tuned
+
+plot_data <- 
+  metrics %>% 
+  mutate(absolute_bias = abs(bias)) %>% 
+  tidyr::pivot_longer(c("bias", "absolute_bias", "mse")) %>% 
+  mutate(model = factor(model, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model", "propensity_change")))  %>% 
+  dplyr::group_by(model, gps_mod, sample_size, name) %>% 
+  dplyr::summarize(mean = mean(value), 
+            lower = quantile(value, 0.1),
+            upper = quantile(value, 0.9)) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                             gps_mod == 2 ~ "heavy tail", 
+                             gps_mod == 3 ~ "nonlinear", 
+                             gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction")))
+
+plot_data %>% 
+  filter(name == "bias") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  theme_bw() + 
+  coord_cartesian(ylim = c(-10, 10)) + 
+  facet_wrap(sample_size ~ name, scales = "free")
+
+plot_data %>% 
+  filter(name == "absolute_bias", sample_size == 1000) %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  coord_cartesian(ylim = c(0, 35)) + 
+  theme_bw() + 
+  facet_grid(sample_size ~ name, scales = "free")
+
+plot_data %>% 
+  filter(name == "mse") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype = "dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  theme_bw() + 
+  coord_cartesian(ylim = c(0, 200)) + 
+  facet_grid(sample_size ~ name, scales = "free")
+
+# Make prediction plots
+pred_plot <-
+  predictions %>%
+  tidyr::pivot_longer(c("linear_model", "linear_gps", "gam_model", "gam_gps", "change_model", "causal_gps_default", "causal_gps_tuned", "true_fit")) %>%
+  mutate(name = factor(name, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model", "propensity_change", "true_fit"))) %>% 
+  data.table()
+
+pred_summary <-
+  pred_plot[,.(mean = mean(value),
+             lower = quantile(value, 0.1),
+             upper = quantile(value, 0.9)), by=.(gps_mod, exposure, sample_size, name)] %>% 
+  mutate(name = relevel(name, ref = "linear_model")) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                             gps_mod == 2 ~ "heavy tail", 
+                             gps_mod == 3 ~ "nonlinear", 
+                             gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+# Get a sample of predictions to plot
+pred_sample <- 
+  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                             gps_mod == 2 ~ "heavy tail", 
+                             gps_mod == 3 ~ "nonlinear", 
+                             gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
+  
+
+
+ggplot() +
+  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +
+  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
+  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
+  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
+  labs(x = "Exposure", y = "Response") +
+  theme_bw() +
+  coord_cartesian(ylim = c(-10, 10)) + 
+  facet_grid(name ~ gps_mod) + 
+  theme(legend.position = "none")
+
+```
+
+
+
+
+## Nonlinear scenario (supralinear)
+
+We repeat our analysis with a nonlinear relationship between the exposure and outcome to compare how these methods perform. The outcome model we fit is described below:
+
+
+$$
+\begin{split} 
+Y|E,C &\sim N(\mu(E, C), 10^2) \\
+\mu(E, C) &= 20 + 8*log_{10}(E + 1) - (2, 2, 3, -1, 2, 2)*C 
+\end{split}
+$$
+
+```{r, eval = T, echo = F, cache = T}
 set.seed(23)
 source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
 cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
@@ -631,7 +883,6 @@ pred_sample <-
   data.table()
 
 true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
-  
 
 
 ggplot() +
@@ -646,247 +897,6 @@ ggplot() +
   theme(legend.position = "none")
 
 ```
-
-
-
-## Nonlinear scenario (supralinear)
-
-We repeat our analysis with a nonlinear relationship between the exposure and outcome to compare how these methods perform. The outcome model we fit is described below:
-
-
-$$
-\begin{split} 
-Y|E,C &\sim N(\mu(E, C), 10^2) \\
-\mu(E, C) &= 20 + 8*log_{10}(E + 1) - (2, 2, 3, -1, 2, 2)*C 
-\end{split}
-$$
-
-```{r, eval = T, echo = F, cache = T}
-source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
-cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
-
-med_pred_sample <- 
-  lapply(c(200, 1000), function(sample_size){
-    # Iterate through several simulations
-    med_pred_sim <- 
-      mclapply(c(1:100), mc.cores = 10, function(sim) {
-        cf <- mvrnorm(n = sample_size,
-                    mu = rep(0, 4),
-                    Sigma = diag(4))
-        cf5 <- sample(c((-2):2), sample_size, replace = T)
-        cf6 <- runif(sample_size, min = -3, max = 3)
-        confounders = cbind(cf, cf5, cf6)
-        colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
-      
-        med_pred_gps <- 
-          lapply(c(1:4), function(gps_mod) {
-            if (gps_mod == 1) {
-              exposure = 9 * cov_function(confounders) + rnorm(sample_size, mean = 0, sd = 5)
-            } else if (gps_mod == 2) {
-              exposure = 15 *  cov_function(confounders) + rt(sample_size, df = 2)
-            } else if (gps_mod == 3) {
-              exposure = 7 * cov_function(confounders) + (confounders[, "cf3"]) ^ 2 + rnorm(sample_size, mean = 0, sd = 5)
-            } else if (gps_mod == 4) {
-              exposure = 7 * cov_function(confounders) + (confounders[, "cf3"]) ^ 2 + 2 * (confounders[, "cf1"]) * (confounders[, "cf6"]) + rnorm(sample_size, mean = 0, sd = 5)
-            }
-            
-            # Rescale exposure to lie between 0-20
-            scale_exposure <- function(x) {
-              20 * (x - min(x)) / (max(x) - min(x))
-            }
-            exposure = scale_exposure(exposure)
-            
-            # Get metrics and predictions from sample
-            metrics_predictions <- 
-              metrics_from_data(exposure = exposure, confounders = confounders, exposure_relationship = "sublinear",
-                                outcome_relationship = "linear", sample_size = sample_size, family = "gaussian", adjust_confounder = T)
-    
-            metrics <- metrics_predictions$metrics
-            predictions <-  metrics_predictions$predictions
-            cor_table <- metrics_predictions$cor_table
-            
-            metrics[, gps_mod := gps_mod]
-            metrics[, sample_size := sample_size]
-            metrics[, sim := sim]
-            
-            predictions[, gps_mod := gps_mod]
-            predictions[, sample_size := sample_size]
-            predictions[, sim := sim]
-            
-            cor_table[, gps_mod := gps_mod]
-            cor_table[, sample_size := sample_size]
-            cor_table[, sim := sim]
-            
-            return(list(metrics, predictions, cor_table))
-          })
-        
-        metrics_gps <- rbindlist(lapply(med_pred_gps, function(x) x[[1]]))
-        predictions_gps <- rbindlist(lapply(med_pred_gps, function(x) x[[2]]))
-        correlation_gps <- rbindlist(lapply(med_pred_gps, function(x) x[[3]]))
-        
-        return(list(metrics_gps, predictions_gps, correlation_gps))
-      })
-    metrics_sim <- rbindlist(lapply(med_pred_sim, function(x) x[[1]]))
-    predictions_sim <- rbindlist(lapply(med_pred_sim, function(x) x[[2]]))
-    correlation_sim <- rbindlist(lapply(med_pred_sim, function(x) x[[3]]))
-    return(list(metrics_sim, predictions_sim, correlation_sim))
-  })
-
-# Unpack the metrics and predictions
-metrics <- rbindlist(lapply(med_pred_sample, function(x) x[[1]]))
-predictions <- rbindlist(lapply(med_pred_sample, function(x) x[[2]]))
-gps_correlation <- rbindlist(lapply(med_pred_sample, function(x) x[[3]]))
-
-# Graph the chain points found 
-change_points = unique(predictions$change_point)
-data.table(change_points) %>% 
-  ggplot() + 
-  geom_histogram(aes(x = change_points), bins = 20) + 
-  theme_classic() + 
-  labs(x = "Change point", y = "Count", title = "Change point distribution")
-
-
-gg_correlation <-
-  gps_correlation %>% 
-   group_by(gps_mod, covariate) %>% 
-   dplyr::summarize(pre_cor = mean(pre_cor),
-             post_cor = mean(post_cor)) %>% 
-   pivot_longer(c("pre_cor", "post_cor")) %>%
-   mutate(name = factor(name, levels = unique(name))) %>%
-   ggplot(aes(x = covariate, y = value, color = name, group = name)) +
-   geom_hline(aes(yintercept = 0.1)) + 
-   geom_point() +
-   geom_line() +
-   theme_bw() +
-   coord_flip() + 
-   facet_wrap(~ gps_mod) + 
-   labs(x = "Absolute correlation", y = "Covariate", title = "Comparing covariate balance with nonlinear")
-    
-gg_correlation  
-
-plot_data <- 
-  metrics %>% 
-  mutate(absolute_bias = abs(bias)) %>% 
-  tidyr::pivot_longer(c("bias", "absolute_bias", "mse")) %>% 
-  mutate(model = factor(model, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "change_model", "propensity_change")))  %>% 
-  dplyr::group_by(model, gps_mod, sample_size, name) %>% 
-  dplyr::summarize(mean = mean(value), 
-            lower = quantile(value, 0.1),
-            upper = quantile(value, 0.9)) %>% 
-  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
-                             gps_mod == 2 ~ "heavy tail", 
-                             gps_mod == 3 ~ "nonlinear", 
-                             gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction")))
-
-plot_data %>% 
-  filter(name == "bias") %>% 
-  ggplot() + 
-  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
-  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
-  labs(x = "Scenario", y = "Value") + 
-  theme_bw() + 
-  coord_cartesian(ylim = c(-10, 10)) + 
-  facet_wrap(sample_size ~ name, scales = "free")
-
-plot_data %>% 
-  filter(name == "absolute_bias", sample_size == 1000) %>% 
-  ggplot() + 
-  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
-  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
-  labs(x = "Scenario", y = "Value") + 
-  coord_cartesian(ylim = c(0, 35)) + 
-  theme_bw() + 
-  facet_grid(sample_size ~ name, scales = "free")
-
-plot_data %>% 
-  filter(name == "mse") %>% 
-  ggplot() + 
-  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
-  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype = "dashed", size = 0.2) + 
-  labs(x = "Scenario", y = "Value") + 
-  theme_bw() + 
-  coord_cartesian(ylim = c(0, 200)) + 
-  facet_grid(sample_size ~ name, scales = "free")
-
-# Make prediction plots
-pred_plot <-
-  predictions %>%
-  tidyr::pivot_longer(c("linear_model", "linear_gps", "gam_model", "gam_gps", "change_model", "propensity_change", "true_fit")) %>%
-  mutate(name = factor(name, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "change_model", "propensity_change", "true_fit"))) %>% 
-  data.table()
-
-pred_summary <-
-  pred_plot[,.(mean = mean(value),
-             lower = quantile(value, 0.1),
-             upper = quantile(value, 0.9)), by=.(gps_mod, exposure, sample_size, name)] %>% 
-  mutate(name = relevel(name, ref = "linear_model")) %>% 
-  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
-                             gps_mod == 2 ~ "heavy tail", 
-                             gps_mod == 3 ~ "nonlinear", 
-                             gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
-  data.table()
-
-# Get a sample of predictions to plot
-pred_sample <- 
-  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
-  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
-                             gps_mod == 2 ~ "heavy tail", 
-                             gps_mod == 3 ~ "nonlinear", 
-                             gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
-  data.table()
-
-true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
-  
-
-# ggplot() +
-#   geom_line(data = pred_summary[name != "true_fit" & gps_mod == 1], aes(x = exposure, y = mean), linetype = "dashed") +
-#    geom_line(data = true_fit_plot[gps_mod == 1], aes(x = exposure, y = mean), color = "black", linetype = "solid") +
-#     geom_line(data = pred_sample[name != "true_fit" & gps_mod == 1], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
-#   scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
-#   labs(x = "Exposure", y = "Response") +
-#   theme_bw() +
-#   facet_grid(sample_size ~ name, scales = "free") + 
-#   theme(legend.position = "none")
-
-
-ggplot() +
-  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +
-  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
-  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
-  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
-  labs(x = "Exposure", y = "Response") +
-  theme_bw() +
-  coord_cartesian(ylim = c(-15, 15)) + 
-  facet_grid(name ~ gps_mod) + 
-  theme(legend.position = "none")
-
-# ggplot() +
-#   geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000 & gps_mod %in% c(4, 5, 6)], aes(x = exposure, y = mean), linetype = "solid") +
-#    geom_line(data = true_fit_plot[sample_size == 1000 & gps_mod %in% c(4,5,6)], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
-#     geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000 & gps_mod %in% c(4, 5, 6)], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
-#   scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
-#   labs(x = "Exposure", y = "Response") +
-#   theme_bw() +
-#   #coord_cartesian(ylim = c(-6, 6)) + 
-#   facet_grid(name ~ gps_mod) + 
-#   theme(legend.position = "none")
-# 
-
-# plot_data %>%
-#   ggplot() +
-#   geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.5)) +
-#   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) +
-#   labs(x = "Scenario", y = "Value") +
-#   theme_bw() +
-#   facet_grid(sample_size ~ name)
-
-
-# sim_data %>%
-#   dplyr::select(gps_mod, sample_size, model, bias, mse) %>%
-#   arrange(gps_mod, sample_size) %>%
-#   knitr::kable()
-
-
 ```
 
 

@@ -59,12 +59,14 @@ data_generate_a <-
 metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationship = "linear", outcome_relationship = "linear", sample_size = 1000, confounders = NA,
                               family = "gaussian", eschif_draws = NULL, adjust_confounder = T, confounder_mult = 1, causal_gps = F) {
   
-  # Fit data generating mechanism
-  exposure_relationship = "linear"
-  outcome_relationship = "linear"
-  family = "gaussian"
-  adjust_confounder = F
-  confounder_mult = 1
+  
+  # exposure_relationship = "linear"
+  # outcome_relationship = "linear"
+  # family = "gaussian"
+  # adjust_confounder = F
+  # confounder_mult = 1
+  
+  # Simulate data
   data_example <- data_generate_a(sample_size = sample_size, exposure = exposure, confounders = confounders, 
                                   exposure_relationship = exposure_relationship, outcome_relationship = outcome_relationship,
                                   family = family, confounder_mult = confounder_mult)
@@ -141,12 +143,21 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
     #data_ipw = filter(data_example, between(IPW, lower_bound, upper_bound))
     
     # Make correlation table.... might be difficult 
-    correlation_table <- 
-        rbindlist(lapply(names(data.frame(confounders)), function(cov){
-          pre_cor <- abs(cor(data_ipw$exposure, data_ipw[[cov]]))
-          post_cor <- abs(wtd.cor(data_ipw$exposure, data_ipw[[cov]], data_ipw$IPW))
-          data.table(covariate = cov, pre_cor = pre_cor, post_cor = post_cor[1])
-        }))
+    
+    post_cor <- cov.wt(data_ipw[, c("exposure", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6")], wt = (data_ipw$IPW), cor = T)$cor
+    post_cor <- abs(post_cor[-1, 1])
+    
+    pre_cor <- cov.wt(data_ipw[, c("exposure", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6")], cor = T)$cor
+    pre_cor <- abs(pre_cor[-1, 1])
+    
+    correlation_table <- data.table(covariate = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6"), pre_cor = pre_cor, post_cor = post_cor)
+    
+    # correlation_table <- 
+    #     rbindlist(lapply(names(data.frame(confounders)), function(cov){
+    #       pre_cor <- abs(cor(data_ipw$exposure, data_ipw[[cov]]))
+    #       post_cor <- abs(wtd.cor(data_ipw$exposure, data_ipw[[cov]], data_ipw$IPW))
+    #       data.table(covariate = cov, pre_cor = pre_cor, post_cor = post_cor[1])
+    #     }))
     
     
     # Now fit using CausalGPS package --------------------------
@@ -164,7 +175,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
                                         optimized_compile = TRUE,
                                         sl_lib = c("m_xgboost"),
                                         covar_bl_method = "absolute",
-                                        covar_bl_trs = 0.15,
+                                        covar_bl_trs = 0.1,
                                         covar_bl_trs_type = "mean",
                                         max_attempt = 1,
                                         matching_fun = "matching_l1",
@@ -199,7 +210,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
                                           gps_model = "non-parametric",
                                           use_cov_transform = FALSE,
                                           transformers = list("pow2", "pow3", "abs", "scale"),
-                                          trim_quantiles = c(0.025,0.975),
+                                          trim_quantiles = c(0.01,0.99),
                                           optimized_compile = T,
                                           sl_lib = c("m_xgboost"),
                                           params = list(xgb_rounds = tune_grid[[1]],
@@ -229,16 +240,19 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
       
       # Run these wrapper functions in parallel
       # Consider running optimized vs non optimized version through simulations? Could try to get that working today 
-      cl <- parallel::makeCluster(12, type="PSOCK")
+      cl <- parallel::makeCluster(6, type="PSOCK")
       parallel::clusterExport(cl=cl,
                               varlist = c("generate_pseudo_pop",
                                           "wrapper_func",
                                           "data_ipw"
                               ),
                               envir=environment())
-      
+
       pseudo_pop_list  <- parallel::parLapply(cl,tune_grid_list, wrapper_func)
       parallel::stopCluster(cl)
+      
+      # If you don't want to run in parallel, use this 
+      #pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 4, wrapper_func)
       corr_search <- do.call("rbind", (lapply(pseudo_pop_list, function(x) x[[1]])))
       
       # Extract minimum as your result
@@ -467,7 +481,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
   
   data_metrics <- 
     data_prediction %>% 
-    pivot_longer(model_types, names_to = "model", values_to = "prediction") %>% 
+    tidyr::gather(model_types, key = "model", value = "prediction") %>% 
     data.table()
   
   data_metrics <- 
@@ -482,7 +496,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
 
 
 # Function for evaluating eSCHIF 
-## Currently that will take forever to run because eSCHIF runs 1,000 versions of its funciton anyway, so thinking if that is worth it. 
+## Currently that will take forever to run because eSCHIF runs 1,000 versions of its function anyway, so thinking if that is worth it. 
 
 
 
