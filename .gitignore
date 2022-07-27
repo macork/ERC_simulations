@@ -1,0 +1,7 @@
+# Make sure you are not keeping data on github becuase it could be sensitive 
+data/
+*.csv 
+*.nc
+*.rst
+*.pdf
+*.html
