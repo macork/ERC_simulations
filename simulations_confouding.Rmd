@@ -25,7 +25,7 @@ library(caret)
 library(WeightIt)
 library(chngpt)
 library(cobalt)
-library("devtools")
+# library("devtools")
 #install_github("fasrc/CausalGPS")
 library("CausalGPS")
 
