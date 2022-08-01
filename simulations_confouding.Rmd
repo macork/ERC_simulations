@@ -15,7 +15,6 @@ rm(list = ls())
 library(tidyverse)
 library(data.table)
 library(MASS)
-library(ggeffects)
 library(parallel)
 library(xgboost)
 library(SuperLearner)
@@ -25,9 +24,16 @@ library(caret)
 library(WeightIt)
 library(chngpt)
 library(cobalt)
-# library("devtools")
+#library(devtools)
 #install_github("fasrc/CausalGPS")
 library("CausalGPS")
+
+# Set directory (based on username on cluster or local computer)
+if (Sys.getenv("USER") == "mcork") {
+  repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
+} else if (Sys.getenv("USER") == "michaelacork") {
+  repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
+}
 
 ```
 
@@ -56,7 +62,7 @@ $$
 Before fitting the model we can compare how well the covariates predict the exposure. We can first look at this without any noise, and we would expect that in scenario 1 and 2 it would perfectly capture the exposure given it is a linear function of the covariates, whereas the association would get significantly worse in scenario 3 and 4. 
 
 ```{r, eval = T, echo = F}
-source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
+source(paste0(repo_dir, "/simulation_functions.R"))
 cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
 
 # Function to rescale values between 0-20
@@ -192,10 +198,12 @@ Note that running the CausalGPS package in parallel requires that I do not use m
 
 ```{r, echo = F, eval = T, cache = T}
 set.seed(23)
-source("~/Desktop/Francesca_research/Simulation_studies/simulation_functions.R")
+source(paste0(repo_dir, "/simulation_functions.R"))
 cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
+scale_exposure <- function(x){20 * (x-min(x))/(max(x)-min(x))}
 
-sample_size = 1000
+sample_size = 2000
+final_sample_size = 1000
 med_pred_sample <- list()
 med_pred_gps <- list()
 
@@ -221,20 +229,26 @@ for (sim in 1:10) {
         exposure = scale_exposure(cov_function(confounders) + 0.5 * (confounders[, "cf3"]) ^ 2) + rnorm(sample_size, mean = 0, sd = sqrt(10))
       } else if (gps_mod == 4) {
         exposure = scale_exposure(cov_function(confounders) + 0.5 * (confounders[, "cf3"]) ^ 2 + 0.5 * (confounders[, "cf1"]) * (confounders[, "cf5"])) + rnorm(sample_size, mean = 0, sd = sqrt(10))
-        }
+      }
+    
+    # Make sure all positive for sublinear
+    final_cfd_exp <- data.frame(cbind(confounders, exposure)) %>% filter(exposure > 0)
+    final_cfd_exp <- final_cfd_exp[1:final_sample_size, ]
+    exposure <- final_cfd_exp$exposure
+    confounders <- final_cfd_exp[, 1:6]
              
       # Get metrics and predictions from sample
       metrics_predictions <- 
-        metrics_from_data(exposure = exposure, confounders = confounders, exposure_relationship = "linear",
-                          outcome_relationship = "linear", sample_size = sample_size, family = "gaussian", adjust_confounder = F, causal_gps = T)
+        metrics_from_data(exposure = exposure, confounders = confounders, exposure_relationship = "sublinear",
+                          outcome_relationship = "linear", sample_size = final_sample_size, family = "gaussian", adjust_confounder = T, causal_gps = T)
       
       metrics <- metrics_predictions$metrics
       predictions <-  metrics_predictions$predictions
       cor_table <- metrics_predictions$cor_table
       
       # Add appropriate columns
-      metrics <- metrics %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim)
-      predictions <- predictions %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim)
+      metrics <- metrics %>% mutate(gps_mod = gps_mod, sample_size = final_sample_size, sim = sim)
+      predictions <- predictions %>% mutate(gps_mod = gps_mod, sample_size = final_sample_size, sim = sim)
       
       # put method for correlation table
       cor_table <- cor_table %>% mutate(method = "ipw", delta = 0)
@@ -255,7 +269,7 @@ for (sim in 1:10) {
                    delta =  metrics_predictions[[5]]$params$delta_n)
       
       cor_table <- rbind(cor_table, cor_default, cor_tuned)
-      cor_table <- cor_table %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim)
+      cor_table <- cor_table %>% mutate(gps_mod = gps_mod, sample_size = final_sample_size, sim = sim)
       
       # Store in list
       med_pred_gps[[sim]][[gps_mod]] <- list(data.table(metrics),data.table(predictions), data.table(cor_table))
@@ -270,8 +284,7 @@ for (sim in 1:10) {
 }
 
 # Save files and make way date stamp them soon
-saveRDS(med_pred_sample, file = paste0("~/Desktop/Francesca_research/Simulation_studies/med_pred_sample_linear_noadjust.RDS"))
-
+saveRDS(med_pred_sample, file = paste0(repo_dir, "med_pred_sample_sublinear_adjust.RDS"))
 
 # Unpack the metrics and predictions
 metrics <- rbindlist(lapply(med_pred_sample, function(x) x[[1]]))
@@ -435,7 +448,7 @@ ggplot() +
   scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
   labs(x = "Exposure", y = "Response") +
   theme_bw() +
-  coord_cartesian(ylim = c(-10, 10)) + 
+  coord_cartesian(ylim = c(-20, 20)) + 
   facet_grid(name ~ gps_mod) + 
   theme(legend.position = "none")
 
