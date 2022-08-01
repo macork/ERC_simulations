@@ -286,7 +286,6 @@ for (sim in 1:10) {
 # Save files and make way date stamp them soon
 saveRDS(med_pred_sample, file = paste0(repo_dir, "med_pred_sample_sublinear_adjust.RDS"))
 
-
 # Unpack the metrics and predictions
 metrics <- rbindlist(lapply(med_pred_sample, function(x) x[[1]]))
 predictions <- rbindlist(lapply(med_pred_sample, function(x) x[[2]]))
