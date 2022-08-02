@@ -60,11 +60,11 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
                               family = "gaussian", eschif_draws = NULL, adjust_confounder = T, confounder_mult = 1, causal_gps = F) {
   
   
-  exposure_relationship = "sublinear"
-  outcome_relationship = "linear"
-   family = "gaussian"
-   adjust_confounder = T
-   confounder_mult = 1
+  # exposure_relationship = "sublinear"
+  # outcome_relationship = "linear"
+  #  family = "gaussian"
+  #  adjust_confounder = T
+  #  confounder_mult = 1
   
   # Simulate data
   data_example <- data_generate_a(sample_size = sample_size, exposure = exposure, confounders = confounders, 
@@ -177,11 +177,11 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
                                         covar_bl_method = "absolute",
                                         covar_bl_trs = 0.1,
                                         covar_bl_trs_type = "mean",
-                                        max_attempt = 1,
+                                        max_attempt = 20,
                                         matching_fun = "matching_l1",
                                         delta_n = 1.0,
                                         scale = 1,
-                                        nthread = 10)
+                                        nthread = 2)
       
       # Now fit semi-parametric here 
       causal_gps_default <- gam::gam(formula = Y ~ s(w, df = 3),
@@ -223,7 +223,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
                                           matching_fun = "matching_l1",
                                           delta_n = tune_grid[[4]],
                                           scale = 1,
-                                          nthread = 1)
+                                          nthread = 2)
         
         
         results <- 
@@ -240,16 +240,20 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
       
       # Run these wrapper functions in parallel
       # Consider running optimized vs non optimized version through simulations? Could try to get that working today 
-      cl <- parallel::makeCluster(10, type="PSOCK")
-      parallel::clusterExport(cl=cl,
-                              varlist = c("generate_pseudo_pop",
-                                          "wrapper_func",
-                                          "data_ipw"
-                              ),
-                              envir=environment())
-
-      pseudo_pop_list  <- parallel::parLapply(cl,tune_grid_list, wrapper_func)
-      parallel::stopCluster(cl)
+      
+      # currently not running parallel so commenting this out 
+      # cl <- parallel::makeCluster(10, type="PSOCK")
+      # parallel::clusterExport(cl=cl,
+      #                         varlist = c("generate_pseudo_pop",
+      #                                     "wrapper_func",
+      #                                     "data_ipw"
+      #                         ),
+      #                         envir=environment())
+      # 
+      # pseudo_pop_list  <- parallel::parLapply(cl,tune_grid_list, wrapper_func)
+      # parallel::stopCluster(cl)
+      
+      pseudo_pop_list <- lapply(tune_grid_list, wrapper_func)
       
       # If you don't want to run in parallel, use this 
       #pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 4, wrapper_func)
