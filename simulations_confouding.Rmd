@@ -31,7 +31,7 @@ library("CausalGPS")
 # Set directory (based on username on cluster or local computer)
 if (Sys.getenv("USER") == "mcork") {
   repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
-} else if (Sys.getenv("USER") == "michaelacork") {
+} else if (Sys.getenv("USER") == "michaelcork") {
   repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
 }
 
