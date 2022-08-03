@@ -21,6 +21,7 @@ library("CausalGPS")
 args <- commandArgs(T)
 exp_relationship <- as.character(args[[1]])
 adjust_confounder <- as.logical(args[[2]])
+sample_size <- as.numeric(args[[3]])
 
 # File paths
 repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
@@ -42,7 +43,6 @@ scale_exposure <- function(x){20 * (x-min(x))/(max(x)-min(x))}
 
 # Define arguments
 sim.num <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
-sample_size <- 1000
 
 # Start the simulations ------------------------------------------------------------------------------------------
 set.seed(sim.num)
