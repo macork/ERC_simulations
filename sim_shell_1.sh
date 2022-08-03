@@ -15,4 +15,4 @@
 
 module load gcc/9.3.0-fasrc01 R/4.0.5-fasrc02
 
-R CMD BATCH --no-save "--args $1 $2" sim_fasse_1.R Logs/${1}_adjust_confounder_${2}_run${SLURM_ARRAY_TASK_ID}.Rout
+R CMD BATCH --no-save "--args $1 $2 $3" sim_fasse_1.R Logs/${1}_adjust_confounder_${2}_sample_${3}_run${SLURM_ARRAY_TASK_ID}.Rout

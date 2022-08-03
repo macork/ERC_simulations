@@ -5,7 +5,7 @@ library(data.table)
 
 exp_relationship = "sublinear"
 adjust_confounder = T
-time_stamp = "0802_13"
+time_stamp = "0802_16"
 replicates = 100
 
 results_dir <- paste0("/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/results/",
@@ -122,8 +122,8 @@ plot_data <-
   mutate(model = factor(model, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model", "propensity_change")))  %>% 
   dplyr::group_by(model, gps_mod, sample_size, name) %>% 
   dplyr::summarize(mean = mean(value), 
-                   lower = quantile(value, 0.1),
-                   upper = quantile(value, 0.9)) %>% 
+                   lower = quantile(value, 0.05),
+                   upper = quantile(value, 0.95)) %>% 
   mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
                                     gps_mod == 2 ~ "heavy tail", 
                                     gps_mod == 3 ~ "nonlinear", 
