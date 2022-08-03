@@ -202,7 +202,7 @@ source(paste0(repo_dir, "/simulation_functions.R"))
 cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
 scale_exposure <- function(x){20 * (x-min(x))/(max(x)-min(x))}
 
-sample_size = 2000
+sample_size = 1000
 final_sample_size = 1000
 med_pred_sample <- list()
 med_pred_gps <- list()
@@ -222,7 +222,7 @@ for (sim in 1:10) {
   for (gps_mod in 1:4) {
     # Generate appropriate exposure (make this a function later)
       if (gps_mod == 1) {
-        exposure = scale_exposure(cov_function(confounders)) + rnorm(sample_size, mean = 0, sd = sqrt(10))
+        exposure = scale_exposure(scale_exposure(cov_function(confounders)) + rnorm(sample_size, mean = 0, sd = sqrt(10)))
       } else if (gps_mod == 2) {
         exposure = scale_exposure(cov_function(confounders)) + (sqrt(5)) * rt(sample_size, df = 3)
       } else if (gps_mod == 3) {
@@ -239,7 +239,7 @@ for (sim in 1:10) {
              
       # Get metrics and predictions from sample
       metrics_predictions <- 
-        metrics_from_data(exposure = exposure, confounders = confounders, exposure_relationship = "sublinear",
+        metrics_from_data(exposure = exposure, confounders = confounders, exposure_relationship = "linear",
                           outcome_relationship = "linear", sample_size = final_sample_size, family = "gaussian", adjust_confounder = T, causal_gps = T)
       
       metrics <- metrics_predictions$metrics

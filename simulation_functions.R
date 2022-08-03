@@ -168,8 +168,8 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
                                         data.frame(data_ipw[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")]),
                                         ci_appr = "matching",
                                         pred_model = "sl",
-                                        gps_model = "non-parametric",
-                                        use_cov_transform = FALSE,
+                                        gps_model = "parametric",
+                                        use_cov_transform = TRUE,
                                         transformers = list("pow2", "pow3", "abs", "scale"),
                                         trim_quantiles = c(0.01,0.99),
                                         optimized_compile = TRUE,
@@ -207,7 +207,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
                                           data.frame(data_ipw[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")]),
                                           ci_appr = "matching",
                                           pred_model = "sl",
-                                          gps_model = "non-parametric",
+                                          gps_model = "parametric",
                                           use_cov_transform = FALSE,
                                           transformers = list("pow2", "pow3", "abs", "scale"),
                                           trim_quantiles = c(0.01,0.99),
@@ -296,83 +296,61 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
     change_lower = summary(change_model)$chngpt[["(lower"]]
     change_upper = summary(change_model)$chngpt[["upper)"]]
   
-
-  
   # Now many points to evaluate the integral
   discrete_points = 1000
   
-  # Predict the ERC curve from 0 to 20 (which contains most of our data)
-  data_prediction  <- data_example[, .(exposure = seq(0, 20, length.out = discrete_points),
-                                       cf1 = 0,
-                                       cf2 = 0,
-                                       cf3 = 0,
-                                       cf4 = 0,
-                                       cf5 = 0,
-                                       cf6 = 0)]
+  # Predict the RC curve for every point
+  ## Fix this for nonlinear first
+  data_prediction <- 
+    rbindlist(lapply(seq(0, 20, length.out = discrete_points), function(pot_exp) {
+      potential_data <- 
+        dplyr::select(data_example, cf1, cf2, cf3, cf4, cf5, cf6) %>% 
+        mutate(exposure = pot_exp)
+      
+      # Now add on correct value for these functions
+      if (exposure_relationship == "linear") {
+        Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) + 0.1 * potential_data$exposure)
+      } else if (exposure_relationship == "sublinear") {
+        Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) + 8 * log10(exposure + 1))
+      } else if (exposure_relationship == "threshold") {
+          thresh_exp <- potential_data$exposure 
+          thresh_exp[thresh_exp <= 5] <- 0
+          thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
+          Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) + 1 * thresh_exp)
+      }
+      
+      # Fit each model and take mean for ERC
+      potential_outcome <- 
+        potential_data %>% 
+        mutate(linear_model = predict(linear_fit, potential_data, type = "response"),
+               gam_model = predict(gam_fit, newdata = potential_data, type = "response"),
+               linear_gps = predict(propensity_lm, newdata = potential_data, type = "response"),
+               gam_gps = predict(propensity_gam, newdata = potential_data, type = "response"),
+               change_model = predict(change_model, newdata = potential_data, type = "response"),
+               causal_gps_default = potential_data %>% rename(w = exposure) %>% predict(causal_gps_default, newdata = ., type = "response"),
+               causal_gps_tuned = potential_data %>% rename(w = exposure) %>% predict(causal_gps_tuned, newdata = ., type = "response"),
+               true_fit = Y) %>% 
+        dplyr::select(exposure, linear_model, gam_model, linear_gps, gam_gps, change_model, causal_gps_default, causal_gps_tuned, true_fit) %>% 
+        summarize_all(mean) %>% 
+        data.table()
+      return(potential_outcome)
+    }))
   
-  # Get true value for outcome
-  if (exposure_relationship == "linear") {
-    if (family == "gaussian") {
-      y_true <- as.numeric(20 + 0.1 *  data_prediction$exposure)
-    } else if (family == "poisson")
-      y_true <- exp(2 + 0.1 *  data_prediction$exposure)
-  } else if (exposure_relationship == "sublinear") {
-    if (family == "gaussian") {
-      # y_true <- as.numeric(20 - c(2, 2, 3, -1) %*% t(as.matrix(data_prediction[, .(cf1, cf2, cf3, cf4)])) - 2 * data_prediction$cf5 - 2 * data_prediction$cf6 + 5 * sqrt(data_prediction$exposure))
-      y_true <- as.numeric(20 + 8 * log10(data_prediction$exposure + 1))
-    } else if (family == "poisson") {
-      y_true <- exp(2 + 1.5 * log10(data_prediction$exposure + 1))
-    }
-  } else if (exposure_relationship == "threshold") {
-    if (family == "gaussian") {
-      thresh_exp <- data_prediction$exposure
-      thresh_exp[thresh_exp <= 5] <- 0
-      thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
-      y_true <- as.numeric(20 + 1 * thresh_exp)
-    } else if (family == "poisson") {
-      thresh_exp <- data_prediction$exposure
-      thresh_exp[thresh_exp <= 5] <- 0
-      thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
-      y_true <- exp(2 + 0.1 * thresh_exp)
-    }
-  } else {
-    stop("Must either be linear, sublinear, or threshold as of now")
-  }
+  # Here add manual code to say that for the changepoint you can just add the linear prediction after it thinks it found a change
+  # threshold = summary(change_model)$chngpt[["est"]]
+  # coef_exposure_pre = coef(change_model)[["exposure"]]
+  # coef_exposure_post = coef(change_model)[["(exposure-chngpt)+"]]
+  # intercept = coef(change_model)[["(Intercept)"]]
+  # potential_outcome$change_model = ifelse(potential_data$exposure < threshold, intercept + coef_exposure_pre*(potential_data$exposure), intercept + coef_exposure_pre*(potential_data$exposure) + coef_exposure_post*(potential_data$exposure - threshold))
   
+  # Add changepoint for propensity model, suppressed for now since didn't seem to improve things 
+  # threshold = summary(propensity_change)$chngpt[["est"]]
+  # coef_exposure_pre = coef(propensity_change)[["exposure"]]
+  # coef_exposure_post = coef(propensity_change)[["(exposure-chngpt)+"]]
+  # intercept = coef(propensity_change)[["(Intercept)"]]
+  # data_prediction$propensity_change = ifelse(data_prediction$exposure < threshold, intercept + coef_exposure_pre*(data_prediction$exposure), intercept + coef_exposure_pre*(data_prediction$exposure) + coef_exposure_post*(data_prediction$exposure - threshold))
   
-  
-  # Add predictions onto model
-  if (causal_gps) {
-    data_prediction[order(exposure), `:=`(linear_model = predict(linear_fit, data_prediction, type = "response"),
-                                          gam_model = predict(gam_fit, newdata = data_prediction, type = "response"),
-                                          linear_gps = predict(propensity_lm, newdata = data_prediction, type = "response"),
-                                          gam_gps = predict(propensity_gam, newdata = data_prediction, type = "response"),
-                                          causal_gps_default = data_prediction %>% rename(w = exposure) %>% predict(causal_gps_default, newdata = ., type = "response"),
-                                          causal_gps_tuned = data_prediction %>% rename(w = exposure) %>% predict(causal_gps_tuned, newdata = ., type = "response"),
-                                          true_fit = y_true)]
-  } else {
-    data_prediction[order(exposure), `:=`(linear_model = predict(linear_fit, data_prediction, type = "response"),
-                                          gam_model = predict(gam_fit, newdata = data_prediction, type = "response"),
-                                          linear_gps = predict(propensity_lm, newdata = data_prediction, type = "response"),
-                                          gam_gps = predict(propensity_gam, newdata = data_prediction, type = "response"),
-                                          true_fit = y_true)]
-  }
-    
-    # Here add manual code to say that for the changepoint you can just add the linear prediction after it thinks it found a change
-    threshold = summary(change_model)$chngpt[["est"]]
-    coef_exposure_pre = coef(change_model)[["exposure"]]
-    coef_exposure_post = coef(change_model)[["(exposure-chngpt)+"]]
-    intercept = coef(change_model)[["(Intercept)"]]
-    data_prediction$change_model = ifelse(data_prediction$exposure < threshold, intercept + coef_exposure_pre*(data_prediction$exposure), intercept + coef_exposure_pre*(data_prediction$exposure) + coef_exposure_post*(data_prediction$exposure - threshold))
-    
-    # Add changepoint for propensity model, suppressed for now since didn't seem to improve things 
-    # threshold = summary(propensity_change)$chngpt[["est"]]
-    # coef_exposure_pre = coef(propensity_change)[["exposure"]]
-    # coef_exposure_post = coef(propensity_change)[["(exposure-chngpt)+"]]
-    # intercept = coef(propensity_change)[["(Intercept)"]]
-    # data_prediction$propensity_change = ifelse(data_prediction$exposure < threshold, intercept + coef_exposure_pre*(data_prediction$exposure), intercept + coef_exposure_pre*(data_prediction$exposure) + coef_exposure_post*(data_prediction$exposure - threshold))
-    
-  # Calculate trimmed reference exposure value
+  # Calculate trimmed reference exposure value (set as minimum so that the curve starts at 0)
   trimmed_reference <- sort(data_prediction$exposure)[1]
   
   # Remove influence of the intercept to just compare risk difference or relative risk 
@@ -405,16 +383,6 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
                #propensity_change = propensity_change - data_prediction[exposure == trimmed_reference, propensity_change],
                true_fit = true_fit - data_prediction[exposure == trimmed_reference, true_fit])
     }
-
-    
-    # old way of doing it with using min as reference
-    # data_prediction <- 
-    #   data_prediction %>% 
-    #   mutate(linear_model = linear_model - quantile(data_prediction$linear_model, 0.025),
-    #          gam_model = gam_model - data_prediction$gam_model[1],
-    #          true_fit = true_fit - data_prediction$true_fit[1])
-    # 
-    
   } else if (family == "poisson") {
     model_types <- c("linear_model", "gam_model")
     data_prediction <- 
@@ -464,14 +432,18 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
     }
   }
   
-  # Return plot if asked
+  # For now try trimming the 10% boundary at the top (wonder what effect this has!)
+  trim_upper <- data_example$exposure %>% quantile(0.9)
+  data_prediction <- data_prediction[exposure <= trim_upper]
+  
+  
   if (just_plots == T) {
     plot_fits <- 
       data_prediction %>% 
       pivot_longer(c(all_of(model_types), "true_fit"), names_to = "model", values_to = "prediction") %>%
       arrange(exposure) %>%
       ggplot(aes(x = exposure, y = prediction, color = model, linetype = model)) +
-      geom_line() + 
+      geom_line() +
       labs(x = "Exposure concentration", y = "Relative risk of death")
     
     return(plot_fits)
