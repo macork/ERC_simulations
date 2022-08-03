@@ -24,7 +24,13 @@ adjust_confounder <- as.logical(args[[2]])
 sample_size <- as.numeric(args[[3]])
 
 # File paths
-repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
+# Set directory (based on username on cluster or local computer)
+if (Sys.getenv("USER") == "mcork") {
+  repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
+} else if (Sys.getenv("USER") == "michaelcork") {
+  repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
+}
+
 out_dir <- paste0("/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/results/", exp_relationship, "_", adjust_confounder)
 if (!dir.exists(out_dir)) dir.create(out_dir)
 
