@@ -1,7 +1,7 @@
 # File that contains all the functions I am using for the simulation 
 
 data_generate_a <-
-  function(sample_size = 1000, exposure = NA, confounders = NA, exposure_relationship = NA, outcome_relationship = NA, family = NA, outcome_sd = 10, confounder_mult) {
+  function(sample_size = 1000, exposure = NA, confounders = NA, exposure_relationship = NA, outcome_relationship = NA, family = NA, outcome_sd = 10) {
     
     # Abbreviate for clarity 
     cf <- confounders
@@ -9,9 +9,10 @@ data_generate_a <-
     if (exposure_relationship == "linear") {
       if (family == "gaussian") {
         if (outcome_relationship == "linear") {
-          Y = as.numeric(20 - confounder_mult * c(2, 2, 3, -1, -2, -2) %*% t(cf) + 0.1 * exposure + rnorm(sample_size, mean = 0, sd = outcome_sd))
-        } else if (outcome_relationship == "nonlinear") {
-          Y = as.numeric(20 - cf[, "cf1"] ^ 3 - cf[, "cf1"] + exp(cf[, "cf2"] - cf[, "cf6"]) + log(abs(cf[, "cf2"]) * abs(cf[, "cf3"])) + 0.1 * exposure + rnorm(sample_size, mean = 0, sd = outcome_sd))
+          Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) + 0.1 * exposure + rnorm(sample_size, mean = 0, sd = outcome_sd))
+        } else if (outcome_relationship == "interaction") {
+          Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) - exposure*(-0.1*cf[, 1] + 0.1 * cf[, 3]^2 + 0.1*cf[, 4] + 0.1*cf[, 5]) + 
+                         exposure + rnorm(sample_size, mean = 0, sd = outcome_sd))
         }
       } else if (family == "poisson") {
         # Poisson model
@@ -56,20 +57,19 @@ data_generate_a <-
 
 # Define function for simulations
 # adjust_confounder says if we should adjust for confounders at all in our model
-metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationship = "linear", outcome_relationship = "linear", sample_size = 1000, confounders = NA,
-                              family = "gaussian", eschif_draws = NULL, adjust_confounder = T, confounder_mult = 1, causal_gps = F) {
+metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", outcome_relationship = "linear", sample_size = 1000, confounders = NA,
+                              family = "gaussian", eschif_draws = NULL, adjust_confounder = T, causal_gps = F) {
   
   
-  # exposure_relationship = "sublinear"
-  # outcome_relationship = "linear"
+  # exposure_relationship = "linear"
+  # outcome_relationship = "interaction"
   #  family = "gaussian"
   #  adjust_confounder = T
-  #  confounder_mult = 1
   
   # Simulate data
   data_example <- data_generate_a(sample_size = sample_size, exposure = exposure, confounders = confounders, 
                                   exposure_relationship = exposure_relationship, outcome_relationship = outcome_relationship,
-                                  family = family, confounder_mult = confounder_mult)
+                                  family = family)
   
   # Now fit a linear model
   if (adjust_confounder == T) {
@@ -298,7 +298,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
     change_upper = summary(change_model)$chngpt[["upper)"]]
   
   # Now many points to evaluate the integral
-  discrete_points = 1000
+  discrete_points = 100
   
   # Predict the RC curve for every point
   ## Fix this for nonlinear first
@@ -310,7 +310,13 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
       
       # Now add on correct value for these functions
       if (exposure_relationship == "linear") {
-        Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) + 0.1 * potential_data$exposure)
+        if (outcome_relationship == "linear") {
+          Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) + 0.1 * potential_data$exposure)
+        } else if (outcome_relationship == "interaction") {
+          Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) - 
+                           potential_data$exposure*(-0.1*potential_data$cf1 + 0.1 * potential_data$cf3^2 + 0.1*potential_data$cf4 + 0.1*potential_data$cf5) + 
+                           potential_data$exposure)
+        }
       } else if (exposure_relationship == "sublinear") {
         Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) + 8 * log10(exposure + 1))
       } else if (exposure_relationship == "threshold") {
@@ -336,6 +342,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
         data.table()
       return(potential_outcome)
     }))
+  
   
   # Here add manual code to say that for the changepoint you can just add the linear prediction after it thinks it found a change
   # threshold = summary(change_model)$chngpt[["est"]]
@@ -433,22 +440,19 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
     }
   }
   
-  # For now try trimming the 10% boundary at the top (wonder what effect this has!)
-  trim_upper <- data_example$exposure %>% quantile(0.9)
+  # For now try trimming the 10% boundary at the top (wonder what effect this has, just setting to 15 for now)
+  trim_upper <- 15
   data_prediction <- data_prediction[exposure <= trim_upper]
   
   
-  if (just_plots == T) {
-    plot_fits <- 
-      data_prediction %>% 
-      pivot_longer(c(all_of(model_types), "true_fit"), names_to = "model", values_to = "prediction") %>%
-      arrange(exposure) %>%
-      ggplot(aes(x = exposure, y = prediction, color = model, linetype = model)) +
-      geom_line() +
-      labs(x = "Exposure concentration", y = "Relative risk of death")
-    
-    return(plot_fits)
-  }
+  # Diagnostic plot of model fit
+  plot_fits <- 
+    data_prediction %>% 
+    pivot_longer(c(all_of(model_types), "true_fit"), names_to = "model", values_to = "prediction") %>%
+    arrange(exposure) %>%
+    ggplot(aes(x = exposure, y = prediction, color = model, linetype = model)) +
+    geom_line() +
+    labs(x = "Exposure concentration", y = "Relative risk of death")
   
   # Add specified change point here
   data_prediction$change_point = change_assesed
