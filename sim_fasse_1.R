@@ -27,11 +27,12 @@ if (Sys.getenv("USER") == "mcork") {
 }
 
 # Read in config file and grab arguments
-#config <- fread(paste0(repo_dir,"config.csv"), header = T)
-exp_relationship <- "linear"
-adjust_confounder <- as.logical(T)
-sample_size <- as.numeric(1000)
-out_relationship <- as.character("interaction")
+config <- fread(paste0(repo_dir,"config.csv"), header = T)
+exp_relationship <- as.character(config[Argument == "exp_relationship", Value])
+adjust_confounder <- as.logical(config[Argument == "adjust_confounder", Value])
+sample_size <- as.numeric(config[Argument == "sample_size", Value])
+out_relationship <- as.character(config[Argument == "out_relationship", Value])
+confounder_setting <- as.character(config[Argument == "confounder_setting", Value])
 
 # pass argument that explains run
 args <- commandArgs(T)
@@ -47,7 +48,7 @@ dir.create(paste0(out_dir, "/", run_title))
 out_dir <- paste0(out_dir, "/", run_title)
 
 # Write config to output directory for reproducing results
-#write.csv(config, file = paste0(out_dir, "/config.csv"))
+write.csv(config, file = paste0(out_dir, "/config.csv"))
 
 # Source the appropriate functions needed for simulation 
 source(paste0(repo_dir, "simulation_functions.R"))
@@ -63,11 +64,35 @@ sim.num <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
 set.seed(sim.num)
 
 # Generate the confounders
-cf <- mvrnorm(n = sample_size,
-              mu = rep(0, 4),
-              Sigma = diag(4))
-cf5 <- sample(c((-2):2), sample_size, replace = T)
-cf6 <- runif(sample_size, min = -3, max = 3)
+if (confounder_setting = "simple") {
+  cf <- mvrnorm(n = sample_size,
+                mu = rep(0, 4),
+                Sigma = diag(4))
+  cf5 <- sample(c((-2):2), sample_size, replace = T)
+  cf6 <- runif(sample_size, min = -3, max = 3)
+} else if (confounder_setting == "nonzero") {
+  cf <- mvrnorm(n = sample_size,
+                mu = rep(2, 4),
+                Sigma = diag(4))
+  cf5 <- sample(c((-3):2), sample_size, replace = T)
+  cf6 <- runif(sample_size, min = -1, max = 4)
+} else if (confounder_setting = "correlated") {
+  cf <- mvrnorm(n = sample_size,
+                mu = rep(0, 4),
+                Sigma = diag(x = 0.8, nrow = 4, ncol = 4) + 0.2)
+  cf5 <- sample(c((-2):2), sample_size, replace = T)
+  cf6 <- runif(sample_size, min = -3, max = 3)
+} else if (confounder_setting = "complex"){
+  cf <- mvrnorm(n = sample_size,
+                mu = rep(2, 4),
+                Sigma = diag(x = 0.8, nrow = 4, ncol = 4) + 0.2)
+  cf5 <- sample(c((-3):2), sample_size, replace = T)
+  cf6 <- runif(sample_size, min = -1, max = 4)
+} else {
+  stop("Confounder settings are either simple, nonzero, correlated, or complex")
+}
+
+# Bing together confounders and name
 confounders = cbind(cf, cf5, cf6)
 colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
 

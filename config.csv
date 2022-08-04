@@ -1,0 +1,5 @@
+Argument,Value
+sample_size,1000
+exp_relationship,linear 
+adjust_confounder,T
+out_relationship,interaction
