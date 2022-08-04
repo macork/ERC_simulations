@@ -4,8 +4,8 @@ library(tidyverse)
 library(data.table)
 
 exp_relationship = "linear"
-adjust_confounder = F
-time_stamp = "0803_14"
+adjust_confounder = T
+time_stamp = "linear_interaction"
 replicates = 100
 
 results_dir <- paste0("/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/results/",
@@ -158,4 +158,7 @@ plot_data %>%
   theme_bw() + 
   coord_cartesian(ylim = c(0, 400)) + 
   facet_grid(sample_size ~ name, scales = "free")
+
+
+
 

@@ -27,11 +27,11 @@ if (Sys.getenv("USER") == "mcork") {
 }
 
 # Read in config file and grab arguments
-config <- fread(paste0(repo_dir,"config.csv"), header = T)
-exp_relationship <- as.character(config[Argument == "exp_relationship", Value])
-adjust_confounder <- as.logical(config[Argument == "adjust_confounder", Value])
-sample_size <- as.numeric(config[Argument == "sample_size", Value])
-out_relationship <- as.character(config[Argument == "out_relationship", Value])
+#config <- fread(paste0(repo_dir,"config.csv"), header = T)
+exp_relationship <- "linear"
+adjust_confounder <- as.logical(T)
+sample_size <- as.numeric(1000)
+out_relationship <- as.character("interaction")
 
 # pass argument that explains run
 args <- commandArgs(T)
@@ -47,7 +47,7 @@ dir.create(paste0(out_dir, "/", run_title))
 out_dir <- paste0(out_dir, "/", run_title)
 
 # Write config to output directory for reproducing results
-write.csv(config, file = paste0(out_dir, "/config.csv"))
+#write.csv(config, file = paste0(out_dir, "/config.csv"))
 
 # Source the appropriate functions needed for simulation 
 source(paste0(repo_dir, "simulation_functions.R"))
