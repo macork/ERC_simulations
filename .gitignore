@@ -5,3 +5,4 @@ data/
 *.pdf
 *.html
 results/**/**/sim_final*
+Logs/
