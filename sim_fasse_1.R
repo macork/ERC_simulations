@@ -1,5 +1,5 @@
 # Function for running ERC sim on FASSE cluster 
-
+rm(list = ls())
 # Load libraries needed 
 library(tidyverse)
 library(data.table)
@@ -17,11 +17,6 @@ library(cobalt)
 #install_github("fasrc/CausalGPS")
 library("CausalGPS")
 
-# Grabbing arguments as a list and format correctly
-args <- commandArgs(T)
-exp_relationship <- as.character(args[[1]])
-adjust_confounder <- as.logical(args[[2]])
-sample_size <- as.numeric(args[[3]])
 
 # File paths
 # Set directory (based on username on cluster or local computer)
@@ -31,14 +26,28 @@ if (Sys.getenv("USER") == "mcork") {
   repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
 }
 
-out_dir <- paste0("/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/results/", exp_relationship, "_", adjust_confounder)
+# Read in config file and grab arguments
+config <- fread(paste0(repo_dir,"config.csv"), header = T)
+exp_relationship <- as.character(config[Argument == "exp_relationship", Value])
+adjust_confounder <- as.logical(config[Argument == "adjust_confounder", Value])
+sample_size <- as.numeric(config[Argument == "sample_size", Value])
+out_relationship <- as.character(config[Argument == "out_relationship", Value])
+
+# pass argument that explains run
+args <- commandArgs(T)
+run_title = as.character(args[[1]])
+
+# Create out directory
+out_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder)
 if (!dir.exists(out_dir)) dir.create(out_dir)
 
-# Create correct output directory
-out_dir_tag <- format(Sys.time(), "%m%d_%H")
-dir.create(paste0(out_dir, "/", out_dir_tag))
+# Create correct output directory (previously using time, now using whatever character you want)
+#out_dir_tag <- format(Sys.time(), "%m%d_%H")
+dir.create(paste0(out_dir, "/", run_title))
+out_dir <- paste0(out_dir, "/", run_title)
 
-out_dir <- paste0(out_dir, "/", out_dir_tag)
+# Write config to output directory for reproducing results
+write.csv(config, file = paste0(out_dir, "/config.csv"))
 
 # Source the appropriate functions needed for simulation 
 source(paste0(repo_dir, "simulation_functions.R"))
@@ -81,7 +90,7 @@ for (gps_mod in 1:4) {
   # Get metrics and predictions from sample
   metrics_predictions <- 
     metrics_from_data(exposure = exposure, confounders = confounders, exposure_relationship = exp_relationship,
-                      outcome_relationship = "linear", sample_size = sample_size, family = "gaussian", 
+                      outcome_relationship = out_relationship, sample_size = sample_size, family = "gaussian", 
                       adjust_confounder = adjust_confounder, causal_gps = T)
   
   metrics <- metrics_predictions$metrics
