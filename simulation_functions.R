@@ -171,13 +171,13 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
                                         gps_model = "parametric",
                                         use_cov_transform = TRUE,
                                         transformers = list("pow2", "pow3", "abs", "scale"),
-                                        trim_quantiles = c(0.01,0.99),
+                                        trim_quantiles = c(0.025,0.975),
                                         optimized_compile = TRUE,
                                         sl_lib = c("m_xgboost"),
                                         covar_bl_method = "absolute",
                                         covar_bl_trs = 0.1,
                                         covar_bl_trs_type = "mean",
-                                        max_attempt = 1,
+                                        max_attempt = 20,
                                         matching_fun = "matching_l1",
                                         delta_n = 1.0,
                                         scale = 1,
@@ -185,7 +185,8 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
       
       # Now fit semi-parametric here 
       causal_gps_default <- gam::gam(formula = Y ~ s(w, df = 3),
-                             family = "gaussian", data = data.frame(pseudo_pop_default$pseudo_pop), weights = counter)
+                             family = "gaussian", data = data.frame(pseudo_pop_default$pseudo_pop), 
+                             weights = counter)
       
       # Now fit most optimized causal pathway
       # Set grid to tune over 
@@ -210,7 +211,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
                                           gps_model = "parametric",
                                           use_cov_transform = FALSE,
                                           transformers = list("pow2", "pow3", "abs", "scale"),
-                                          trim_quantiles = c(0.01,0.99),
+                                          trim_quantiles = c(0.025,0.975),
                                           optimized_compile = T,
                                           sl_lib = c("m_xgboost"),
                                           params = list(xgb_rounds = tune_grid[[1]],
@@ -219,7 +220,7 @@ metrics_from_data <- function(just_plots = F, exposure = NA, exposure_relationsh
                                           covar_bl_method = "absolute",
                                           covar_bl_trs = 0.1,
                                           covar_bl_trs_type = "mean",
-                                          max_attempt = 20,
+                                          max_attempt = 1,
                                           matching_fun = "matching_l1",
                                           delta_n = tune_grid[[4]],
                                           scale = 1,

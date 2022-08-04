@@ -3,9 +3,9 @@
 library(tidyverse)
 library(data.table)
 
-exp_relationship = "sublinear"
-adjust_confounder = T
-time_stamp = "0802_16"
+exp_relationship = "linear"
+adjust_confounder = F
+time_stamp = "0803_14"
 replicates = 100
 
 results_dir <- paste0("/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/results/",
