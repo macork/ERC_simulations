@@ -5,7 +5,7 @@ library(data.table)
 
 exp_relationship = "linear"
 adjust_confounder = T
-time_stamp = "linear_interaction"
+time_stamp = "linear_interaction_complex"
 replicates = 100
 
 results_dir <- paste0("/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/results/",
