@@ -6,48 +6,51 @@ data_generate_a <-
     # Abbreviate for clarity 
     cf <- confounders
     
-    if (exposure_relationship == "linear") {
-      if (family == "gaussian") {
-        if (outcome_relationship == "linear") {
-          Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) + 0.1 * exposure + rnorm(sample_size, mean = 0, sd = outcome_sd))
-        } else if (outcome_relationship == "interaction") {
-          Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) - exposure*(-0.1*cf[, 1] + 0.1 * cf[, 3]^2 + 0.1*cf[, 4] + 0.1*cf[, 5]) + 
-                         exposure + rnorm(sample_size, mean = 0, sd = outcome_sd))
-        }
-      } else if (family == "poisson") {
-        # Poisson model
-        lambdas = exp(2 +  as.vector(matrix(c(0.2, 0.2, 0.3, -0.1, -0.2, 0.2), nrow = 1) %*% t(cf)) + 0.1 * exposure)
-        Y = rpois(n = 1000, lambda = lambdas)
+    # For now mostly using gaussian family, though poisson has been used in the past as well
+    if (family == "gaussian") {
+      
+      # Add on exposure effect depending on relationship
+      if (exposure_relationship == "linear") {
+        potential_data$transformed_exp <- potential_data$exposure
+        Y = potential_data$transformed_exp
+      } else if (exposure_relationship == "sublinear") {
+        potential_data$transformed_exp = log10(potential_data$exposure + 1)
+        Y = 8 * potential_data$transformed_exp
+      } else if (exposure_relationship == "threshold") {
+        # Set threshold at 5
+        thresh_exp <- potential_data$exposure 
+        thresh_exp[thresh_exp <= 5] <- 0
+        thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
+        potential_data$transformed_exp <- thresh_exp
+        Y = Y + thresh_exp
       }
       
-      #Y_true = as.numeric(20 - c(2, 2, 3, -1) %*% t(cf) - 2 * cf5 - 2 * cf6 + 0.1 * exposure)
-    } else if (exposure_relationship == "sublinear") {
-      #Y = as.numeric(20 - c(2, 2, 3, -1) %*% t(cf) - 2 * cf5 - 2 * cf6 + 5 * sqrt(exposure) + rnorm(size, mean = 0, sd = outcome_sd))
-      if (family == "gaussian") {
-        Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) + 8 * log10(exposure + 1) + rnorm(sample_size, mean = 0, sd = outcome_sd))
-        #Y_true = as.numeric(20 - c(2, 2, 3, -1) %*% t(cf) - 2 * cf5 - 2 * cf6 + log(exposure))
-      } else if (family == "poisson") {
-        lambdas = exp(as.numeric(unlist(2 + 0.2 * cf[, 1] + 0.2 * cf[, 2] + 0.3 * cf[, 3] -0.1 * cf[, 4] - 0.2 * cf[, 5] + 0.2 * cf[, 6] + 1.5 * log10(exposure + 1))))
-        Y = rpois(n = 1000, lambda = lambdas)
+      # Add on effect of the confounders
+      if (outcome_relationship == "linear") {
+        Y = Y + as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) + rnorm(sample_size, mean = 0, sd = outcome_sd))
+      } else if (outcome_relationship == "interaction") {
+        # problem with the threshold exposure scenario happening 
+        Y = Y + as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) - 
+                             potential_data$transformed_exp*(-0.1 * potential_data$cf1 + 0.1 * potential_data$cf3^2 + 0.1*potential_data$cf4 + 0.1*potential_data$cf5) + rnorm(sample_size, mean = 0, sd = outcome_sd))
+      } else {
+        stop("Outcome relationship for now is only between linear and interaction")
       }
-    
-    } else if (exposure_relationship == "threshold") {
-      if (family == "gaussian") {
-        thresh_exp <- exposure 
-        thresh_exp[thresh_exp <= 5] <- 0
-        thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
-        Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) + 1 * thresh_exp + rnorm(sample_size, mean = 0, sd = outcome_sd))
-      } else if (family == "poisson") {
-        thresh_exp <- exposure 
-        thresh_exp[thresh_exp <= 5] <- 0
-        thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
-        lambdas = exp(as.numeric(unlist(2 + 0.2 * cf[, 1] + 0.2 * cf[, 2] + 0.3 * cf[, 3] -0.1 * cf[, 4] - 0.2 * cf[, 5] + 0.2 * cf[, 6] + 0.1 * thresh_exp)))
-        Y = rpois(n = 1000, lambda = lambdas)
-      }
-    } else {
-      stop("Must either be linear, sublinear, or threshold as of now")
+      
+    } else if (family == "poisson") {
+      # linear case
+      lambdas = exp(2 +  as.vector(matrix(c(0.2, 0.2, 0.3, -0.1, -0.2, 0.2), nrow = 1) %*% t(cf)) + 0.1 * exposure)
+      Y = rpois(n = 1000, lambda = lambdas)
+      # sublinear case 
+      lambdas = exp(as.numeric(unlist(2 + 0.2 * cf[, 1] + 0.2 * cf[, 2] + 0.3 * cf[, 3] -0.1 * cf[, 4] - 0.2 * cf[, 5] + 0.2 * cf[, 6] + 1.5 * log10(exposure + 1))))
+      Y = rpois(n = 1000, lambda = lambdas)
+      
+      # threshold case
+      thresh_exp <- exposure 
+      thresh_exp[thresh_exp <= 5] <- 0
+      thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
+      lambdas = exp(as.numeric(unlist(2 + 0.2 * cf[, 1] + 0.2 * cf[, 2] + 0.3 * cf[, 3] -0.1 * cf[, 4] - 0.2 * cf[, 5] + 0.2 * cf[, 6] + 0.1 * thresh_exp)))
+      Y = rpois(n = 1000, lambda = lambdas)
     }
-    
     
     # Save into one simulated dataset
     simulated_data <- data.table(cbind(Y, exposure, cf))
@@ -308,23 +311,45 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
         dplyr::select(data_example, cf1, cf2, cf3, cf4, cf5, cf6) %>% 
         mutate(exposure = pot_exp)
       
-      # Now add on correct value for these functions
+      # Add on exposure effect depending on relationship
       if (exposure_relationship == "linear") {
-        if (outcome_relationship == "linear") {
-          Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) + 0.1 * potential_data$exposure)
-        } else if (outcome_relationship == "interaction") {
-          Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) - 
-                           potential_data$exposure*(-0.1*potential_data$cf1 + 0.1 * potential_data$cf3^2 + 0.1*potential_data$cf4 + 0.1*potential_data$cf5) + 
-                           potential_data$exposure)
-        }
+        potential_data$transformed_exp <- potential_data$exposure
+        Y = potential_data$transformed_exp
       } else if (exposure_relationship == "sublinear") {
-        Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) + 8 * log10(exposure + 1))
+        potential_data$transformed_exp = log10(potential_data$exposure + 1)
+        Y = 8 * potential_data$transformed_exp
       } else if (exposure_relationship == "threshold") {
-          thresh_exp <- potential_data$exposure 
-          thresh_exp[thresh_exp <= 5] <- 0
-          thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
-          Y = as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) + 1 * thresh_exp)
+        # Set threshold at 5
+        thresh_exp <- potential_data$exposure 
+        thresh_exp[thresh_exp <= 5] <- 0
+        thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
+        potential_data$transformed_exp <- thresh_exp
+        Y = Y + thresh_exp
       }
+      
+      # Add on effect of the confounders
+      if (outcome_relationship == "linear") {
+        Y = Y + as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)))
+      } else if (outcome_relationship == "interaction") {
+        # problem with the threshold exposure scenario happening 
+        Y = Y + as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) - 
+                             potential_data$transformed_exp*(-0.1 * potential_data$cf1 + 0.1 * potential_data$cf3^2 + 0.1*potential_data$cf4 + 0.1*potential_data$cf5))
+      } else {
+        stop("Outcome relationship for now is only between linear and interaction")
+      }
+      
+      # # Add on exposure effect
+      # if (exposure_relationship == "linear") {
+      #   Y = Y + potential_data$exposure
+      # } else if (exposure_relationship == "sublinear") {
+      #   Y = Y + 8 * log10(potential_data$exposure + 1)
+      # } else if (exposure_relationship == "threshold") {
+      #   # Set threshold at 5
+      #   thresh_exp <- potential_data$exposure 
+      #   thresh_exp[thresh_exp <= 5] <- 0
+      #   thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
+      #   Y = Y + thresh_exp
+      # }
       
       # Fit each model and take mean for ERC
       potential_outcome <- 
