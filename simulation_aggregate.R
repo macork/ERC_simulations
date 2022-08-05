@@ -5,7 +5,7 @@ library(data.table)
 
 exp_relationship = "linear"
 adjust_confounder = T
-time_stamp = "linear_interaction"
+time_stamp = "linear_interaction_complex"
 replicates = 100
 
 results_dir <- paste0("/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/results/",
@@ -159,6 +159,48 @@ plot_data %>%
   coord_cartesian(ylim = c(0, 400)) + 
   facet_grid(sample_size ~ name, scales = "free")
 
+# Now make trace plots 
+# Make prediction plots
+pred_plot <-
+  predictions %>%
+  tidyr::pivot_longer(c("linear_model", "linear_gps", "gam_model", "gam_gps", "change_model", "causal_gps_default", "causal_gps_tuned", "true_fit")) %>%
+  mutate(name = factor(name, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model", "propensity_change", "true_fit"))) %>% 
+  data.table()
+
+pred_summary <-
+  pred_plot[,.(mean = mean(value),
+               lower = quantile(value, 0.1),
+               upper = quantile(value, 0.9)), by=.(gps_mod, exposure, sample_size, name)] %>% 
+  mutate(name = relevel(name, ref = "linear_model")) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+# Get a sample of predictions to plot
+pred_sample <- 
+  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
+
+
+
+ggplot() +
+  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +
+  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
+  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
+  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
+  labs(x = "Exposure", y = "Response") +
+  theme_bw() +
+  coord_cartesian(ylim = c(-20, 20)) + 
+  facet_grid(name ~ gps_mod) + 
+  theme(legend.position = "none")
 
 
 

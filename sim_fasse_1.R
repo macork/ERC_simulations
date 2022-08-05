@@ -34,6 +34,9 @@ sample_size <- as.numeric(config[Argument == "sample_size", Value])
 out_relationship <- as.character(config[Argument == "out_relationship", Value])
 confounder_setting <- as.character(config[Argument == "confounder_setting", Value])
 
+# Define simulation number
+sim.num <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
+
 # pass argument that explains run
 args <- commandArgs(T)
 run_title = as.character(args[[1]])
@@ -47,8 +50,8 @@ if (!dir.exists(out_dir)) dir.create(out_dir)
 dir.create(paste0(out_dir, "/", run_title))
 out_dir <- paste0(out_dir, "/", run_title)
 
-# Write config to output directory for reproducing results
-write.csv(config, file = paste0(out_dir, "/config.csv"))
+# Write config to output directory for reproducing results (only do this once)
+if (sim.num == 1) write.csv(config, file = paste0(out_dir, "/config.csv"))
 
 # Source the appropriate functions needed for simulation 
 source(paste0(repo_dir, "simulation_functions.R"))
@@ -57,14 +60,11 @@ source(paste0(repo_dir, "simulation_functions.R"))
 cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
 scale_exposure <- function(x){20 * (x-min(x))/(max(x)-min(x))}
 
-# Define arguments
-sim.num <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
-
 # Start the simulations ------------------------------------------------------------------------------------------
 set.seed(sim.num)
 
 # Generate the confounders
-if (confounder_setting = "simple") {
+if (confounder_setting == "simple") {
   cf <- mvrnorm(n = sample_size,
                 mu = rep(0, 4),
                 Sigma = diag(4))
@@ -76,13 +76,13 @@ if (confounder_setting = "simple") {
                 Sigma = diag(4))
   cf5 <- sample(c((-3):2), sample_size, replace = T)
   cf6 <- runif(sample_size, min = -1, max = 4)
-} else if (confounder_setting = "correlated") {
+} else if (confounder_setting == "correlated") {
   cf <- mvrnorm(n = sample_size,
                 mu = rep(0, 4),
                 Sigma = diag(x = 0.8, nrow = 4, ncol = 4) + 0.2)
   cf5 <- sample(c((-2):2), sample_size, replace = T)
   cf6 <- runif(sample_size, min = -3, max = 3)
-} else if (confounder_setting = "complex"){
+} else if (confounder_setting == "complex"){
   cf <- mvrnorm(n = sample_size,
                 mu = rep(2, 4),
                 Sigma = diag(x = 0.8, nrow = 4, ncol = 4) + 0.2)
