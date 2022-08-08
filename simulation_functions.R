@@ -11,27 +11,26 @@ data_generate_a <-
       
       # Add on exposure effect depending on relationship
       if (exposure_relationship == "linear") {
-        potential_data$transformed_exp <- potential_data$exposure
-        Y = potential_data$transformed_exp
+        transformed_exp <- exposure
+        Y = transformed_exp
       } else if (exposure_relationship == "sublinear") {
-        potential_data$transformed_exp = log10(potential_data$exposure + 1)
-        Y = 8 * potential_data$transformed_exp
+        transformed_exp = log10(exposure + 1)
+        Y = 8 * transformed_exp
       } else if (exposure_relationship == "threshold") {
         # Set threshold at 5
-        thresh_exp <- potential_data$exposure 
-        thresh_exp[thresh_exp <= 5] <- 0
-        thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
-        potential_data$transformed_exp <- thresh_exp
-        Y = Y + thresh_exp
+        transformed_exp <- exposure 
+        transformed_exp[transformed_exp <= 5] <- 0
+        transformed_exp[transformed_exp > 5] <- transformed_exp[transformed_exp > 5] - 5
+        Y = Y + transformed_exp
       }
       
       # Add on effect of the confounders
       if (outcome_relationship == "linear") {
-        Y = Y + as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) + rnorm(sample_size, mean = 0, sd = outcome_sd))
+        Y = Y + as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) + rnorm(sample_size, mean = 0, sd = outcome_sd))
       } else if (outcome_relationship == "interaction") {
         # problem with the threshold exposure scenario happening 
-        Y = Y + as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) - 
-                             potential_data$transformed_exp*(-0.1 * potential_data$cf1 + 0.1 * potential_data$cf3^2 + 0.1*potential_data$cf4 + 0.1*potential_data$cf5) + rnorm(sample_size, mean = 0, sd = outcome_sd))
+        Y = Y + as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) - 
+                             transformed_exp*(-0.1 * cf[, 1] + 0.1 * cf[, 3]^2 + 0.1*cf[, 4] + 0.1*cf[, 5]) + rnorm(sample_size, mean = 0, sd = outcome_sd))
       } else {
         stop("Outcome relationship for now is only between linear and interaction")
       }
@@ -301,7 +300,7 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
     change_upper = summary(change_model)$chngpt[["upper)"]]
   
   # Now many points to evaluate the integral
-  discrete_points = 100
+  discrete_points = 1000
   
   # Predict the RC curve for every point
   ## Fix this for nonlinear first

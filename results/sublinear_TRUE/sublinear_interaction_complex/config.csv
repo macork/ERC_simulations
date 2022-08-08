@@ -1,0 +1,6 @@
+"","Argument","Value"
+"1","sample_size","1000"
+"2","exp_relationship","sublinear"
+"3","adjust_confounder","T"
+"4","out_relationship","interaction"
+"5","confounder_setting","complex"
