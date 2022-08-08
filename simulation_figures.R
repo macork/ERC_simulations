@@ -3,6 +3,7 @@
 library(tidyverse)
 library(data.table)
 
+
 exp_relationship = "sublinear"
 adjust_confounder = T
 time_stamp = "sublinear_interaction_complex"
@@ -24,28 +25,20 @@ correlation <- aggregated_results$correlation
 metrics <- aggregated_results$metrics
 predictions <- aggregated_results$predictions
 
-correlation %>% 
-  filter(method == "ipw") %>% 
-  pivot_longer(c("pre_cor", "post_cor"), names_to = "correlation") %>% 
-  group_by(gps_mod, covariate, correlation) %>% 
-  dplyr::summarize(mean = mean(value),
-                   lower = quantile(value, 0.05), 
-                   upper = quantile(value, 0.95)) %>% 
-  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
-                                    gps_mod == 2 ~ "heavy tail", 
-                                    gps_mod == 3 ~ "nonlinear", 
-                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
-  ggplot(aes(x = covariate, y = mean, ymin = lower, ymax = upper, color = correlation, group = correlation)) +
-  geom_hline(aes(yintercept = 0.1)) + 
-  geom_errorbar(width = 0.5) +
-  geom_point() + 
-  geom_line(size = 0.3) +
-  theme_bw() +
-  coord_flip() + 
-  facet_wrap(~ gps_mod) + 
-  labs(y = "Absolute correlation", x = "Covariate", title = "Covariate balance using IPW and entropy based weights")
 
+# Add mean absolute correlation for the final figures for this
+mean_abs_cor <- 
+  correlation %>% 
+  group_by(method, delta, gps_mod, sample_size, sim) %>% 
+  dplyr::summarize(pre_cor = mean(pre_cor), post_cor = mean(post_cor)) %>% 
+  mutate(covariate = "mean") %>% 
+  ungroup()
 
+# Add mean to correlation table
+correlation <- 
+  rbind(correlation, mean_abs_cor) %>% 
+  mutate(covariate = factor(covariate, levels = rev(c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6", "mean"))))
+  
 gg_correlation_ipw <-
   correlation %>% 
   filter(method == "ipw") %>% 
@@ -174,8 +167,9 @@ plot_mse <-
   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype = "dashed", size = 0.2) + 
   labs(x = "Scenario", y = "Value") + 
   theme_bw() + 
-  coord_cartesian(ylim = c(0, 10)) + 
-  labs(y = "Mean squared error", x = "Confounding Scenario", title = paste("MSE with", exp_relationship, "relationship"))
+  scale_y_continuous(trans='log10') + 
+  #coord_cartesian(ylim = c(0, 10)) + 
+  labs(y = "Log of Mean squared error", x = "Confounding Scenario", title = paste("MSE with", exp_relationship, "relationship"))
 
 bias_plot_list <- list(plot_bias, plot_abs_bias, plot_mse)
 # Save ggplot  with bias, absolute bias, mse
