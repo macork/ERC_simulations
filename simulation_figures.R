@@ -4,9 +4,9 @@ library(tidyverse)
 library(data.table)
 
 
-exp_relationship = "sublinear"
+exp_relationship = "linear"
 adjust_confounder = T
-time_stamp = "sublinear_interaction_complex"
+time_stamp = "linear_interaction_complex"
 replicates = 100
 
 # Grab repo directory whether on the cluster or computer
@@ -169,7 +169,7 @@ plot_mse <-
   theme_bw() + 
   scale_y_continuous(trans='log10') + 
   #coord_cartesian(ylim = c(0, 10)) + 
-  labs(y = "Log of Mean squared error", x = "Confounding Scenario", title = paste("MSE with", exp_relationship, "relationship"))
+  labs(y = "Mean squared error (log scale)", x = "Confounding Scenario", title = paste("MSE with", exp_relationship, "relationship"))
 
 bias_plot_list <- list(plot_bias, plot_abs_bias, plot_mse)
 # Save ggplot  with bias, absolute bias, mse
@@ -214,7 +214,8 @@ true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% d
 
 
 
-ggplot() +
+gg_trace_plot <- 
+  ggplot() +
   geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +
   geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
   geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
@@ -223,4 +224,26 @@ ggplot() +
   theme_bw() +
   coord_cartesian(ylim = c(-20, 20)) + 
   facet_grid(name ~ gps_mod) + 
-  theme(legend.position = "none")
+  theme(legend.position = "none") + 
+  theme(text = element_text(size = 16))  
+
+pdf(file = paste0(results_dir, "trace.pdf"), width = 12, height = 10)
+print(gg_trace_plot)
+dev.off()
+
+# Make an example plot
+
+gg_example <- 
+  data.table(exposure = seq(0, 20, length.out = 1000)) %>% 
+  mutate(linear = 0.1 * exposure, sublinear = log10(exposure + 1), threshold = ifelse(exposure < 5, 0, 0.1* (exposure - 5))) %>% 
+  pivot_longer(-exposure, names_to = "Relationship") %>% 
+  ggplot(aes(x = exposure, y = value, color = Relationship)) + 
+  geom_line() + 
+  labs(x = "Exposure", y = "Outcome") + 
+  theme_classic() + 
+  theme(text = element_text(size = 18))   
+
+pdf(file = paste0(results_dir, "example.pdf"), width = 7, height = 6)
+print(gg_example)
+dev.off()
+         
