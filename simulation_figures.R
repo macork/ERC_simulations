@@ -4,9 +4,9 @@ library(tidyverse)
 library(data.table)
 
 
-exp_relationship = "linear"
+exp_relationship = "sublinear"
 adjust_confounder = T
-time_stamp = "linear_interaction_complex"
+time_stamp = "sublinear_interaction_complex_small"
 replicates = 100
 
 # Grab repo directory whether on the cluster or computer

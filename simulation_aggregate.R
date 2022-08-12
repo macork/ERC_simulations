@@ -5,7 +5,7 @@ library(data.table)
 
 exp_relationship = "sublinear"
 adjust_confounder = T
-time_stamp = "sublinear_interaction_complex"
+time_stamp = "sublinear_interaction_complex_small"
 replicates = 100
 
 results_dir <- paste0("/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/results/",
