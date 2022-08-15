@@ -6,7 +6,7 @@ library(data.table)
 
 exp_relationship = "sublinear"
 adjust_confounder = T
-time_stamp = "sublinear_interaction_complex_small"
+time_stamp = "sublinear_interaction_complex_large"
 replicates = 100
 
 # Grab repo directory whether on the cluster or computer

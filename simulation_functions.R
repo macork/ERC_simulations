@@ -179,7 +179,7 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
                                         covar_bl_method = "absolute",
                                         covar_bl_trs = 0.1,
                                         covar_bl_trs_type = "mean",
-                                        max_attempt = 20,
+                                        max_attempt = 1,
                                         matching_fun = "matching_l1",
                                         delta_n = 1.0,
                                         scale = 1,
@@ -199,6 +199,7 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
         max_depth = c(2, 3),
         delta = seq(0.2, 2, by = 0.2)
       )
+      tune_grid <- tune_grid[1,]
       
       # Make list to pass to parLapply
       tune_grid_list <- as.list(as.data.frame(t(tune_grid)))
