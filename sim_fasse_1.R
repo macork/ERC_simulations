@@ -72,7 +72,7 @@ sim_cor_table <- data.table()
 # loop through all sample sizes included
 for (sample_size in c(200, 1000, 10000)) {
   # loop through all types of confounder settings
-  for (confounder_setting in c("simple", "nonzero", "correlated", "complex")) {
+  for (confounder_setting in c("simple", "correlated")) {
     # Loop through two different outcome relationships
     for (out_relationship in c("linear", "interaction")) {
     
