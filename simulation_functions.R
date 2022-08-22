@@ -14,7 +14,7 @@ data_generate_a <-
         transformed_exp <- exposure
         Y = transformed_exp
       } else if (exposure_relationship == "sublinear") {
-        transformed_exp = 4 * log(exposure + 1)
+        transformed_exp = 3 * log(exposure + 1)
         Y = transformed_exp
       } else if (exposure_relationship == "threshold") {
         # Set threshold at 5
@@ -321,7 +321,7 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
         potential_data$transformed_exp <- potential_data$exposure
         Y = potential_data$transformed_exp
       } else if (exposure_relationship == "sublinear") {
-        potential_data$transformed_exp = 8 * log10(potential_data$exposure + 1)
+        potential_data$transformed_exp = 3 * log(potential_data$exposure + 1)
         Y = potential_data$transformed_exp
       } else if (exposure_relationship == "threshold") {
         # Set threshold at 5
@@ -470,8 +470,8 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
     }
   }
   
-  # For now try trimming the 10% boundary at the top (wonder what effect this has, just setting to 15 for now)
-  trim_upper <- 15
+  # For now try trimming the 10% boundary at the top, setting to 20 now
+  trim_upper <- 20
   data_prediction <- data_prediction[exposure <= trim_upper]
   
   
