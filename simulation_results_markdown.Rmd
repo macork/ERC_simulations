@@ -1,0 +1,448 @@
+---
+title: "Simulation_results"
+author: "Michael Cork"
+date: "2022-08-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(data.table)
+library(tidyverse)
+```
+
+# Load all of the data used in these results
+```{r}
+exp_relationship = "linear"
+adjust_confounder = T
+time_stamp = "linear_all"
+replicates = 100
+
+# Grab repo directory whether on the cluster or computer
+if (Sys.getenv("USER") == "mcork") {
+  repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
+} else if (Sys.getenv("USER") == "michaelcork") {
+  repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
+}
+
+results_dir <- paste0(repo_dir, "results/",
+                      exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
+
+aggregated_results <- readRDS(file = paste0(results_dir, "aggregated_results.RDS"))
+
+correlation_linear <- aggregated_results$correlation
+metrics_linear <- aggregated_results$metrics
+predictions_linear <- aggregated_results$predictions
+
+# load sublinear
+exp_relationship = "sublinear"
+adjust_confounder = T
+time_stamp = "sublinear_all"
+replicates = 100
+
+results_dir <- paste0(repo_dir, "results/",
+                      exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
+
+aggregated_results <- readRDS(file = paste0(results_dir, "aggregated_results.RDS"))
+
+correlation_sublinear <- aggregated_results$correlation
+metrics_sublinear <- aggregated_results$metrics
+predictions_sublinear <- aggregated_results$predictions
+
+# load threshold
+exp_relationship = "threshold"
+adjust_confounder = T
+time_stamp = "threshold_all"
+replicates = 100
+
+results_dir <- paste0(repo_dir, "results/",
+                      exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
+
+aggregated_results <- readRDS(file = paste0(results_dir, "aggregated_results.RDS"))
+
+correlation_threshold <- aggregated_results$correlation
+metrics_threshold <- aggregated_results$metrics
+predictions_threshold <- aggregated_results$predictions
+
+```
+## Results 
+For our results, we first evaluate how different exposure outcome relationships impact the estimation of the ERC curve. In each setting, we generate six confounders $(C_1, C_2, ..., C_6)$, which include a combination of continuous and categorical variables.
+$$ C_1, ..., C_4 \sim N(0, I_4), C_5 \sim V \: \{-2, 2 \}, C_6 \sim U \: (-3, 3) $$
+
+Where $N(0, I_4)$ denotes a multivariate normal distribution, $V \: \{-2, 2 \}$ denotes a discrete uniform distribution, and $U(3, 3)$ denotes a continuous uniform distribution. We generate the exposure based on four specifications of the relationship between confounding and exposure based on work by Xiao. 
+
+The exposure $E$ is generated using four different specifications that rely on the function $\gamma(\mathbf{C})=-0.8+$ $(0.1,0.1,-0.1,0.2,0.1,0.1)$ C. Specifically,
+
+1. $E= \gamma(\mathbf{C})+N(0,10)$; (simple linear)
+2. $E= \gamma(\mathbf{C})+\sqrt{5} * T(3)$; (heavy-tailed)
+3. $E=\gamma(\mathbf{C}) + C_{3}^{2} + N(0,5)$ (nonlinear)
+4.  $E=  \gamma(\mathbf{C}) + C_{3}^{2} +  C_{1}C_{6} + N(0,3)$; (interaction)
+
+The exposure is then rescaled such that all values lie between 0 and 20, to mimic what is typically seen in air pollution data. Scenario 1 has a linear relationship between $E$ and $C$ and GPS values are not heavy tailed. In scenario 2, the relationship between $E$ and $C$ stays linear, but GPS values are heavy tailed and include extreme values. Scenario 3 include a non-linear relationship between $E$ and $C$ and scenario 4 adds an interaction term to the relationship between the confounder and the exposure.
+
+$$
+\begin{split} 
+Y|E,C &\sim N(\mu(E, C), 10^2) \\
+\mu(E, C) &= 20 + E - (2, 2, 3, -1, 2, 2)*C + E(-0.1C_1 + 0.1C_3^2 + 0.1C_4 + 0.1C_5)
+\end{split}
+$$
+
+
+### How do different exposure-outcome relationships show up in our simulations
+For the basis of my results I am going to use a an interaction term for the outcome relationship, a simple covariate structure, and a sample size of 1000.
+
+#### Linear exposure response curve
+```{r}
+plot_data_linear <- 
+  metrics_linear %>% 
+  mutate(absolute_bias = abs(bias)) %>% 
+  tidyr::pivot_longer(c("bias", "absolute_bias", "mse")) %>% 
+  mutate(model = factor(model, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model", "propensity_change")))  %>% 
+  dplyr::group_by(model, gps_mod, sample_size, confounder_setting, out_relationship, name) %>% 
+  dplyr::summarize(mean = mean(value), 
+                   lower = quantile(value, 0.05),
+                   upper = quantile(value, 0.95)) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction")))
+
+# Plot results from linear
+
+plot_bias_linear <- 
+  plot_data_linear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "bias") %>% 
+  filter(sample_size == 10000, confounder_setting == "simple") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_wrap(~ out_relationship) + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias with linear exposure-outcome relationship"))
+
+
+plot_abs_bias_linear <- 
+  plot_data_linear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "absolute_bias") %>% 
+  filter(sample_size == 10000, confounder_setting == "simple") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_wrap(~ out_relationship) + 
+    labs(y = "Bias", x = "Confounding Scenario", title = paste("Absolute bias with linear exposure-outcome relationship"))
+
+plot_bias_linear
+plot_abs_bias_linear
+
+
+# Now look at trace plots for linear case, might give better idea of what is going on 
+
+pred_plot <-
+  predictions_linear %>%
+  dplyr::select(-causal_gps_default) %>% 
+  tidyr::pivot_longer(c("linear_model", "linear_gps", "gam_model", "gam_gps", "change_model", "causal_gps_tuned", "true_fit")) %>%
+  mutate(name = factor(name, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_tuned", "change_model", "propensity_change", "true_fit"))) %>% 
+  data.table()
+
+pred_summary <-
+  pred_plot[,.(mean = mean(value),
+               lower = quantile(value, 0.05),
+               upper = quantile(value, 0.95)), by=.(gps_mod, exposure, sample_size, name)] %>% 
+  mutate(name = relevel(name, ref = "linear_model")) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+# Get a sample of predictions to plot
+pred_sample <- 
+  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
+
+
+
+gg_trace_plot <- 
+  ggplot() +
+  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +
+  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
+  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
+  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
+  labs(x = "Exposure", y = "Response") +
+  theme_bw() +
+  coord_cartesian(ylim = c(-20, 20)) + 
+  facet_grid(name ~ gps_mod) + 
+  theme(legend.position = "none") + 
+  theme(text = element_text(size = 16))  
+
+
+```
+
+#### Sublinear
+
+```{r}
+plot_data_sublinear <- 
+  metrics_sublinear %>% 
+  mutate(absolute_bias = abs(bias)) %>% 
+  tidyr::pivot_longer(c("bias", "absolute_bias", "mse")) %>% 
+  mutate(model = factor(model, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model", "propensity_change")))  %>% 
+  dplyr::group_by(model, gps_mod, sample_size, confounder_setting, out_relationship, name) %>% 
+  dplyr::summarize(mean = mean(value), 
+                   lower = quantile(value, 0.05),
+                   upper = quantile(value, 0.95)) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction")))
+
+# Plot results from linear
+
+plot_bias_sublinear <- 
+  plot_data_sublinear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "bias") %>% 
+  filter(sample_size == 10000, confounder_setting == "simple") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_wrap(~ out_relationship) + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias with linear exposure-outcome relationship"))
+
+
+plot_abs_bias_sublinear <- 
+  plot_data_sublinear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "absolute_bias") %>% 
+  filter(sample_size == 10000, confounder_setting == "simple") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_wrap(~ out_relationship) + 
+    labs(y = "Bias", x = "Confounding Scenario", title = paste("Absolute bias with linear exposure-outcome relationship"))
+
+plot_bias_sublinear
+plot_abs_bias_sublinear
+
+```
+
+#### Threshold
+
+
+```{r}
+plot_data_threshold <- 
+  metrics_threshold %>% 
+  mutate(absolute_bias = abs(bias)) %>% 
+  tidyr::pivot_longer(c("bias", "absolute_bias", "mse")) %>% 
+  mutate(model = factor(model, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model", "propensity_change")))  %>% 
+  dplyr::group_by(model, gps_mod, sample_size, confounder_setting, out_relationship, name) %>% 
+  dplyr::summarize(mean = mean(value), 
+                   lower = quantile(value, 0.05),
+                   upper = quantile(value, 0.95)) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction")))
+
+# Plot results from linear
+
+plot_bias_threshold <- 
+  plot_data_threshold %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "bias") %>% 
+  filter(sample_size == 10000, confounder_setting == "simple") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_wrap(~ out_relationship) + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias with linear exposure-outcome relationship"))
+
+
+plot_abs_bias_threshold <- 
+  plot_data_threshold %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "absolute_bias") %>% 
+  filter(sample_size == 10000, confounder_setting == "simple") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_wrap(~ out_relationship) + 
+    labs(y = "Bias", x = "Confounding Scenario", title = paste("Absolute bias with linear exposure-outcome relationship"))
+
+plot_bias_threshold
+plot_abs_bias_threshold
+```
+
+
+
+### How does sample size affect our estimates? 
+
+In general, increased sample size leads to improved covariate balance when fitting causal inference methods. It also leads to improvements in fit for methods that use nonparametric 
+
+
+
+### How do different covariate distributions affect estimation of ERC?
+
+We are comparing how either a simple covariate distribution or a more complex covariate distribution affects covariate balance first. In the simple case all covariates are uncorrelated and centered at zero. In more complex setting they are not cenetered at zero and $C_1, C_2, C_3, C_4$ are correlated. 
+
+We first investigate how it affects covariate balance. In general, we notice that more complex confounder distributions result in larger covariate imbalances in the nonlinear and interaction settings in our simulation, and therefore reduce the covariate balance for all methods. In particular, this is the case when fitting under the matching framework, which is not very surprising given unlike the IPW weighting it is not targetting covariate balance. (note which type of covariate balance we are using in this problem). 
+
+Now we can assess how these different covariate distributions affect the bias of our estimates
+
+## How do different covariate-oucome relationships affect estimation fo the ERC
+
+Between a linear or interaction effect we don't have a different in covariate balance, given that the covariate balance is didcated between the covariates and the outcome 
+
+```{r}
+exp_relationship = "linear"
+adjust_confounder = T
+time_stamp = "linear_all"
+replicates = 100
+
+# Grab repo directory whether on the cluster or computer
+if (Sys.getenv("USER") == "mcork") {
+  repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
+} else if (Sys.getenv("USER") == "michaelcork") {
+  repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
+}
+
+results_dir <- paste0(repo_dir, "results/",
+                      exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
+
+aggregated_results <- readRDS(file = paste0(results_dir, "aggregated_results.RDS"))
+
+correlation <- aggregated_results$correlation
+metrics <- aggregated_results$metrics
+predictions <- aggregated_results$predictions
+
+
+# First look at covariate balance
+mean_abs_cor <- 
+  correlation %>% 
+  group_by(method, delta, gps_mod, sample_size, sim, confounder_setting, out_relationship) %>% 
+  dplyr::summarize(pre_cor = mean(pre_cor), post_cor = mean(post_cor)) %>% 
+  mutate(covariate = "mean") %>% 
+  ungroup()
+
+# Add mean to correlation table
+correlation <- 
+  rbind(correlation, mean_abs_cor) %>% 
+  mutate(covariate = factor(covariate, levels = rev(c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6", "mean"))))
+
+
+
+gg_correlation_ipw <-
+  correlation %>% 
+  filter(sample_size == 1000, out_relationship == "linear") %>% 
+  filter(method == "ipw", confounder_setting %in% c("simple", "complex")) %>% 
+  pivot_longer(c("pre_cor", "post_cor"), names_to = "correlation") %>% 
+  group_by(gps_mod, covariate, correlation, out_relationship, confounder_setting) %>% 
+  dplyr::summarize(mean = mean(value),
+                   lower = quantile(value, 0.05), 
+                   upper = quantile(value, 0.95)) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  ggplot(aes(x = covariate, y = mean, ymin = lower, ymax = upper, color = correlation, group = correlation)) +
+  geom_hline(aes(yintercept = 0.1)) + 
+  geom_errorbar(width = 0.5, position = position_dodge(width = 0.7)) +
+  geom_point(position = position_dodge(width = 0.7)) + 
+  #geom_line(size = 0.3) +
+  theme_bw() +
+  coord_flip() + 
+  facet_grid(confounder_setting ~ gps_mod) + 
+  labs(y = "Absolute correlation", x = "Covariate", title = "Covariate balance using IPW and entropy based weights")
+
+gg_correlation_tuned <-
+  correlation %>% 
+  filter(sample_size == 1000, out_relationship == "linear") %>% 
+  filter(method == "causal_gps_tuned", confounder_setting %in% c("simple", "complex")) %>% 
+  mutate(confounder_setting = factor(confounder_setting, levels = c("simple", "complex"))) %>% 
+  pivot_longer(c("pre_cor", "post_cor"), names_to = "correlation") %>% 
+  group_by(gps_mod, covariate, correlation, out_relationship, confounder_setting) %>% 
+  dplyr::summarize(mean = mean(value),
+                   lower = quantile(value, 0.05), 
+                   upper = quantile(value, 0.95)) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  ggplot(aes(x = covariate, y = mean, ymin = lower, ymax = upper, color = correlation, group = correlation)) +
+  geom_hline(aes(yintercept = 0.1)) + 
+  geom_errorbar(width = 0.5, position = position_dodge(width = 0.7)) +
+  geom_point(position = position_dodge(width = 0.7)) + 
+  #geom_line(size = 0.3) +
+  theme_bw() +
+  coord_flip() + 
+  facet_grid(confounder_setting ~ gps_mod) + 
+  labs(y = "Absolute correlation", x = "Covariate", title = "Covariate balance using IPW and entropy based weights")
+
+
+gg_correlation_tuned
+
+
+
+
+
+```
+
+
+How do different covariate effects on the outcome impact estimation of the ERC (covariate-outcome effect)? How does 
+
+How do different relationships between the exposure and outcome affect estimation of the ERC (exposure effect)?
+How do different propensity score models impact estimation of the ERC?
+How do different covariate effects on the outcome impact estimation of the ERC (covariate-outcome effect)?
+How do different covariate distributions affect estimation of ERC?
+How does sample size impact estimation of the ERC?
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

@@ -3,13 +3,18 @@
 library(tidyverse)
 library(data.table)
 
-exp_relationship = "sublinear"
+exp_relationship = "linear"
 adjust_confounder = T
-time_stamp = "sublinear_interaction_complex_small"
+time_stamp = "linear_all"
 replicates = 100
 
-results_dir <- paste0("/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/results/",
-                      exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
+if (Sys.getenv("USER") == "mcork") {
+  repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
+} else if (Sys.getenv("USER") == "michaelcork") {
+  repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
+}
+
+results_dir <- paste0(repo_dir, "/results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
 
 
 

@@ -14,14 +14,15 @@ data_generate_a <-
         transformed_exp <- exposure
         Y = transformed_exp
       } else if (exposure_relationship == "sublinear") {
-        transformed_exp = log10(exposure + 1)
-        Y = 8 * transformed_exp
+        transformed_exp = 4 * log(exposure + 1)
+        Y = transformed_exp
       } else if (exposure_relationship == "threshold") {
         # Set threshold at 5
         transformed_exp <- exposure 
         transformed_exp[transformed_exp <= 5] <- 0
         transformed_exp[transformed_exp > 5] <- transformed_exp[transformed_exp > 5] - 5
-        Y = Y + transformed_exp
+        transformed_exp <- 1.5 * transformed_exp
+        Y = transformed_exp
       }
       
       # Add on effect of the confounders
@@ -39,6 +40,7 @@ data_generate_a <-
       # linear case
       lambdas = exp(2 +  as.vector(matrix(c(0.2, 0.2, 0.3, -0.1, -0.2, 0.2), nrow = 1) %*% t(cf)) + 0.1 * exposure)
       Y = rpois(n = 1000, lambda = lambdas)
+      
       # sublinear case 
       lambdas = exp(as.numeric(unlist(2 + 0.2 * cf[, 1] + 0.2 * cf[, 2] + 0.3 * cf[, 3] -0.1 * cf[, 4] - 0.2 * cf[, 5] + 0.2 * cf[, 6] + 1.5 * log10(exposure + 1))))
       Y = rpois(n = 1000, lambda = lambdas)
@@ -179,7 +181,7 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
                                         covar_bl_method = "absolute",
                                         covar_bl_trs = 0.1,
                                         covar_bl_trs_type = "mean",
-                                        max_attempt = 1,
+                                        max_attempt = 20,
                                         matching_fun = "matching_l1",
                                         delta_n = 1.0,
                                         scale = 1,
@@ -199,7 +201,6 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
         max_depth = c(2, 3),
         delta = seq(0.2, 2, by = 0.2)
       )
-      tune_grid <- tune_grid[1,]
       
       # Make list to pass to parLapply
       tune_grid_list <- as.list(as.data.frame(t(tune_grid)))
@@ -275,6 +276,10 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
     if (adjust_confounder) {
       propensity_lm <- glm(Y ~ exposure + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_ipw, family = family, weights = IPW)
       propensity_gam <- gam::gam(Y ~ s(exposure, df = 3) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_ipw, family = family, weights = IPW)
+      
+      # Fit an oracle model 
+      
+      
     } else {
       propensity_lm <- glm(Y ~ exposure, data = data_ipw, family = family, weights = IPW)
       propensity_gam <- gam::gam(Y ~ s(exposure, df = 3), data = data_ipw, family = family, weights = IPW)
@@ -316,14 +321,14 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
         potential_data$transformed_exp <- potential_data$exposure
         Y = potential_data$transformed_exp
       } else if (exposure_relationship == "sublinear") {
-        potential_data$transformed_exp = log10(potential_data$exposure + 1)
-        Y = 8 * potential_data$transformed_exp
+        potential_data$transformed_exp = 8 * log10(potential_data$exposure + 1)
+        Y = potential_data$transformed_exp
       } else if (exposure_relationship == "threshold") {
         # Set threshold at 5
         thresh_exp <- potential_data$exposure 
         thresh_exp[thresh_exp <= 5] <- 0
         thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
-        potential_data$transformed_exp <- thresh_exp
+        potential_data$transformed_exp <- 1.5 * thresh_exp
         Y = Y + thresh_exp
       }
       

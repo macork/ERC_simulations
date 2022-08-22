@@ -4,9 +4,9 @@ library(tidyverse)
 library(data.table)
 
 
-exp_relationship = "sublinear"
+exp_relationship = "linear"
 adjust_confounder = T
-time_stamp = "sublinear_interaction_complex_large"
+time_stamp = "linear_all"
 replicates = 100
 
 # Grab repo directory whether on the cluster or computer
@@ -29,7 +29,7 @@ predictions <- aggregated_results$predictions
 # Add mean absolute correlation for the final figures for this
 mean_abs_cor <- 
   correlation %>% 
-  group_by(method, delta, gps_mod, sample_size, sim) %>% 
+  group_by(method, delta, gps_mod, sample_size, sim, confounder_setting, out_relationship) %>% 
   dplyr::summarize(pre_cor = mean(pre_cor), post_cor = mean(post_cor)) %>% 
   mutate(covariate = "mean") %>% 
   ungroup()
@@ -125,26 +125,45 @@ plot_data <-
   mutate(absolute_bias = abs(bias)) %>% 
   tidyr::pivot_longer(c("bias", "absolute_bias", "mse")) %>% 
   mutate(model = factor(model, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model", "propensity_change")))  %>% 
-  dplyr::group_by(model, gps_mod, sample_size, name) %>% 
+  dplyr::group_by(model, gps_mod, sample_size, confounder_setting, out_relationship, name) %>% 
   dplyr::summarize(mean = mean(value), 
-                   lower = quantile(value, 0.1),
-                   upper = quantile(value, 0.9)) %>% 
+                   lower = quantile(value, 0.05),
+                   upper = quantile(value, 0.95)) %>% 
   mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
                                     gps_mod == 2 ~ "heavy tail", 
                                     gps_mod == 3 ~ "nonlinear", 
                                     gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction")))
 
-plot_bias <- 
+plot_abs_bias <- 
   plot_data %>% 
   filter(model != "causal_gps_default") %>% 
-  filter(name == "bias") %>% 
+  filter(name == "absolute_bias") %>% 
+  filter(sample_size == 10000, confounder_setting == "simple") %>% 
   ggplot() + 
   geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
   labs(x = "Scenario", y = "Value") + 
+  scale_y_continuous(trans='log10') + 
   theme_bw() + 
-  coord_cartesian(ylim = c(-15, 15)) + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_wrap(~ out_relationship) + 
   labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias with", exp_relationship, "relationship"))
+
+plot_mse <- 
+  plot_data %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "mse") %>% 
+  filter(confounder_setting == "simple", out_relationship == "linear") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype = "dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  theme_bw() + 
+  facet_wrap(~sample_size) + 
+  scale_y_continuous(trans='log10') + 
+  #coord_cartesian(ylim = c(0, 10)) + 
+  labs(y = "Mean squared error (log scale)", x = "Confounding Scenario", title = paste("MSE with", exp_relationship, "relationship"))
+
 
 plot_abs_bias <- 
   plot_data %>% 
@@ -246,4 +265,13 @@ gg_example <-
 pdf(file = paste0(results_dir, "example.pdf"), width = 7, height = 6)
 print(gg_example)
 dev.off()
+
+
+
+
+### Now doing the same for more plots 
+
+
+
+
          
