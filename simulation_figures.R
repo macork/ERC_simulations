@@ -200,10 +200,11 @@ for (i in 1:length(bias_plot_list)) {
 dev.off()
 
 
-# Now make trace plots 
+# Now make trace plots (for baseline)
 # Make prediction plots
 pred_plot <-
-  predictions %>%
+  predictions_linear %>%
+  filter(confounder_setting == "simple", out_relationship == "interaction", sample_size == 1000) %>% 
   dplyr::select(-causal_gps_default) %>% 
   tidyr::pivot_longer(c("linear_model", "linear_gps", "gam_model", "gam_gps", "change_model", "causal_gps_tuned", "true_fit")) %>%
   mutate(name = factor(name, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_tuned", "change_model", "propensity_change", "true_fit"))) %>% 
@@ -211,9 +212,8 @@ pred_plot <-
 
 pred_summary <-
   pred_plot[,.(mean = mean(value),
-               lower = quantile(value, 0.1),
-               upper = quantile(value, 0.9)), by=.(gps_mod, exposure, sample_size, name)] %>% 
-  mutate(name = relevel(name, ref = "linear_model")) %>% 
+               lower = quantile(value, 0.05),
+               upper = quantile(value, 0.95)), by=.(exposure, gps_mod, sample_size, confounder_setting, out_relationship, name)] %>% 
   mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
                                     gps_mod == 2 ~ "heavy tail", 
                                     gps_mod == 3 ~ "nonlinear", 
@@ -232,8 +232,7 @@ pred_sample <-
 true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
 
 
-
-gg_trace_plot <- 
+gg_trace_plot_interaction <- 
   ggplot() +
   geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +
   geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
@@ -246,10 +245,7 @@ gg_trace_plot <-
   theme(legend.position = "none") + 
   theme(text = element_text(size = 16))  
 
-pdf(file = paste0(results_dir, "trace.pdf"), width = 12, height = 10)
-print(gg_trace_plot)
-dev.off()
-
+gg_trace_plot_interaction
 # Make an example plot
 
 gg_example <- 

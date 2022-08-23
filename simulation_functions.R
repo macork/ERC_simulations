@@ -388,87 +388,87 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
   # intercept = coef(propensity_change)[["(Intercept)"]]
   # data_prediction$propensity_change = ifelse(data_prediction$exposure < threshold, intercept + coef_exposure_pre*(data_prediction$exposure), intercept + coef_exposure_pre*(data_prediction$exposure) + coef_exposure_post*(data_prediction$exposure - threshold))
   
-  # Calculate trimmed reference exposure value (set as minimum so that the curve starts at 0)
-  trimmed_reference <- sort(data_prediction$exposure)[1]
-  
-  # Remove influence of the intercept to just compare risk difference or relative risk 
-  if (family == "gaussian") {
-      # add GAM GPS here if using that model 
-    if (causal_gps) {
-      model_types <- c("linear_model", "gam_model", "linear_gps", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model")
-      data_prediction <- 
-        data_prediction %>% 
-        filter(exposure >= trimmed_reference) %>% 
-        mutate(linear_model = linear_model - data_prediction[exposure == trimmed_reference, linear_model],
-               gam_model = gam_model - data_prediction[exposure == trimmed_reference, gam_model],
-               linear_gps = linear_gps - data_prediction[exposure == trimmed_reference, linear_gps],
-               gam_gps = gam_gps - data_prediction[exposure == trimmed_reference, gam_gps],
-               change_model = change_model - data_prediction[exposure == trimmed_reference, change_model],
-               causal_gps_default = causal_gps_default - data_prediction[exposure == trimmed_reference, causal_gps_default],
-               causal_gps_tuned = causal_gps_tuned - data_prediction[exposure == trimmed_reference, causal_gps_tuned],
-               #propensity_change = propensity_change - data_prediction[exposure == trimmed_reference, propensity_change],
-               true_fit = true_fit - data_prediction[exposure == trimmed_reference, true_fit])
-    } else {
-      model_types <- c("linear_model", "gam_model", "linear_gps", "gam_gps", "change_model")
-      data_prediction <- 
-        data_prediction %>% 
-        filter(exposure >= trimmed_reference) %>% 
-        mutate(linear_model = linear_model - data_prediction[exposure == trimmed_reference, linear_model],
-               gam_model = gam_model - data_prediction[exposure == trimmed_reference, gam_model],
-               linear_gps = linear_gps - data_prediction[exposure == trimmed_reference, linear_gps],
-               gam_gps = gam_gps - data_prediction[exposure == trimmed_reference, gam_gps],
-               change_model = change_model - data_prediction[exposure == trimmed_reference, change_model],
-               #propensity_change = propensity_change - data_prediction[exposure == trimmed_reference, propensity_change],
-               true_fit = true_fit - data_prediction[exposure == trimmed_reference, true_fit])
-    }
-  } else if (family == "poisson") {
-    model_types <- c("linear_model", "gam_model")
-    data_prediction <- 
-      data_prediction %>% 
-      mutate(linear_model = linear_model / data_prediction$linear_model[1],
-             gam_model = gam_model / data_prediction$gam_model[1],
-             true_fit = true_fit / data_prediction$true_fit[1])
-    
-    # Currently not using eSCHIF 
-    if ("eschif" %in% model_types) {
-    # Now fit eSCHIF ---------------------------------
-    range <- max(exposure) - min(exposure)
-    alpha = seq(1, range, by = 2)
-    mu = seq(0, range, by = 2)
-    tau = c(0.1, 0.2, 0.4, 0.8, 1)
-    thres = seq(0, range, 0.5)
-    
-    # Get best fit for eSCHIF
-    # start.time <- Sys.time()
-    if (is.null(eschif_draws)) {
-      y_eschif <- log(data_prediction$gam_model)
-      eschif_fit <-
-        rbindlist(lapply(alpha, function(a) {
-          rbindlist(lapply(mu, function(m) {
-            rbindlist(lapply(tau, function(t) {
-              rbindlist(lapply(thres, function(th) {
-                z = ((exposure - th) + abs(exposure - th)) / 2
-                diff = log(z / a + 1) / (1 + exp(-(z - m) / (t * range)))
-                fit = lm(y_eschif ~ diff - 1)
-                data.table(alpha = a, mu = m, tau = t, thres = th, aic = AIC(fit), theta = coef(fit))
-              }))
-            }))
-          }))[aic == min(aic)]
-        }))[aic == min(aic)]
-      # end.time <- Sys.time()
-      # time.taken <- end.time - start.time
-      # time.taken
-      
-      z = ((exposure - eschif_fit$thres) + abs(exposure - eschif_fit$thres)) / 2
-      eschif_pred = exp(eschif_fit$theta * log(z / eschif_fit$alpha + 1) / (1 + exp(-(z - eschif_fit$mu) / (eschif_fit$tau * range))))
-      data_prediction$eschif <- eschif_pred
-    } else {
-      # Run through eSCHIF as many times as specified 
-      stop("Not done with this part of function yet")
-      
-    }
-    }
-  }
+  model_types <- c("linear_model", "gam_model", "linear_gps", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model")
+  # Calculate trimmed reference exposure value (set as minimum so that the curve starts at 0). For now I am ignoring 
+  # trimmed_reference <- sort(data_prediction$exposure)[1]
+  # 
+  # # Remove influence of the intercept to just compare risk difference or relative risk 
+  # if (family == "gaussian") {
+  #     # add GAM GPS here if using that model 
+  #   if (causal_gps) {
+  #     data_prediction <- 
+  #       data_prediction %>% 
+  #       filter(exposure >= trimmed_reference) %>% 
+  #       mutate(linear_model = linear_model - data_prediction[exposure == trimmed_reference, linear_model],
+  #              gam_model = gam_model - data_prediction[exposure == trimmed_reference, gam_model],
+  #              linear_gps = linear_gps - data_prediction[exposure == trimmed_reference, linear_gps],
+  #              gam_gps = gam_gps - data_prediction[exposure == trimmed_reference, gam_gps],
+  #              change_model = change_model - data_prediction[exposure == trimmed_reference, change_model],
+  #              causal_gps_default = causal_gps_default - data_prediction[exposure == trimmed_reference, causal_gps_default],
+  #              causal_gps_tuned = causal_gps_tuned - data_prediction[exposure == trimmed_reference, causal_gps_tuned],
+  #              #propensity_change = propensity_change - data_prediction[exposure == trimmed_reference, propensity_change],
+  #              true_fit = true_fit - data_prediction[exposure == trimmed_reference, true_fit])
+  #   } else {
+  #     model_types <- c("linear_model", "gam_model", "linear_gps", "gam_gps", "change_model")
+  #     data_prediction <- 
+  #       data_prediction %>% 
+  #       filter(exposure >= trimmed_reference) %>% 
+  #       mutate(linear_model = linear_model - data_prediction[exposure == trimmed_reference, linear_model],
+  #              gam_model = gam_model - data_prediction[exposure == trimmed_reference, gam_model],
+  #              linear_gps = linear_gps - data_prediction[exposure == trimmed_reference, linear_gps],
+  #              gam_gps = gam_gps - data_prediction[exposure == trimmed_reference, gam_gps],
+  #              change_model = change_model - data_prediction[exposure == trimmed_reference, change_model],
+  #              #propensity_change = propensity_change - data_prediction[exposure == trimmed_reference, propensity_change],
+  #              true_fit = true_fit - data_prediction[exposure == trimmed_reference, true_fit])
+  #   }
+  # } else if (family == "poisson") {
+  #   model_types <- c("linear_model", "gam_model")
+  #   data_prediction <- 
+  #     data_prediction %>% 
+  #     mutate(linear_model = linear_model / data_prediction$linear_model[1],
+  #            gam_model = gam_model / data_prediction$gam_model[1],
+  #            true_fit = true_fit / data_prediction$true_fit[1])
+  #   
+  #   # Currently not using eSCHIF 
+  #   if ("eschif" %in% model_types) {
+  #   # Now fit eSCHIF ---------------------------------
+  #   range <- max(exposure) - min(exposure)
+  #   alpha = seq(1, range, by = 2)
+  #   mu = seq(0, range, by = 2)
+  #   tau = c(0.1, 0.2, 0.4, 0.8, 1)
+  #   thres = seq(0, range, 0.5)
+  #   
+  #   # Get best fit for eSCHIF
+  #   # start.time <- Sys.time()
+  #   if (is.null(eschif_draws)) {
+  #     y_eschif <- log(data_prediction$gam_model)
+  #     eschif_fit <-
+  #       rbindlist(lapply(alpha, function(a) {
+  #         rbindlist(lapply(mu, function(m) {
+  #           rbindlist(lapply(tau, function(t) {
+  #             rbindlist(lapply(thres, function(th) {
+  #               z = ((exposure - th) + abs(exposure - th)) / 2
+  #               diff = log(z / a + 1) / (1 + exp(-(z - m) / (t * range)))
+  #               fit = lm(y_eschif ~ diff - 1)
+  #               data.table(alpha = a, mu = m, tau = t, thres = th, aic = AIC(fit), theta = coef(fit))
+  #             }))
+  #           }))
+  #         }))[aic == min(aic)]
+  #       }))[aic == min(aic)]
+  #     # end.time <- Sys.time()
+  #     # time.taken <- end.time - start.time
+  #     # time.taken
+  #     
+  #     z = ((exposure - eschif_fit$thres) + abs(exposure - eschif_fit$thres)) / 2
+  #     eschif_pred = exp(eschif_fit$theta * log(z / eschif_fit$alpha + 1) / (1 + exp(-(z - eschif_fit$mu) / (eschif_fit$tau * range))))
+  #     data_prediction$eschif <- eschif_pred
+  #   } else {
+  #     # Run through eSCHIF as many times as specified 
+  #     stop("Not done with this part of function yet")
+  #     
+  #   }
+  #   }
+  # }
   
   # For now try trimming the 10% boundary at the top, setting to 20 now
   trim_upper <- 20

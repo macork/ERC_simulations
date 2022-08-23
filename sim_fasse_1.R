@@ -72,35 +72,36 @@ sim_cor_table <- data.table()
 # loop through all sample sizes included
 for (sample_size in c(200, 1000, 10000)) {
   # loop through all types of confounder settings
-  for (confounder_setting in c("simple", "correlated")) {
+  for (confounder_setting in c("simple", "nonzero")) {
     # Loop through two different outcome relationships
     for (out_relationship in c("linear", "interaction")) {
     
       # Generate the confounders
+      # Over sample sample size to then remove negative values
       if (confounder_setting == "simple") {
-        cf <- mvrnorm(n = sample_size,
+        cf <- mvrnorm(n = 2 * sample_size,
                       mu = rep(0, 4),
                       Sigma = diag(4))
-        cf5 <- sample(c((-2):2), sample_size, replace = T)
-        cf6 <- runif(sample_size, min = -3, max = 3)
+        cf5 <- sample(c((-2):2), 2 * sample_size, replace = T)
+        cf6 <- runif(2 * sample_size, min = -3, max = 3)
       } else if (confounder_setting == "nonzero") {
-        cf <- mvrnorm(n = sample_size,
+        cf <- mvrnorm(n = 2 * sample_size,
                       mu = rep(2, 4),
                       Sigma = diag(4))
-        cf5 <- sample(c((-3):2), sample_size, replace = T)
-        cf6 <- runif(sample_size, min = -1, max = 4)
+        cf5 <- sample(c((-3):2), 2 * sample_size, replace = T)
+        cf6 <- runif(2 * sample_size, min = -1, max = 4)
       } else if (confounder_setting == "correlated") {
-        cf <- mvrnorm(n = sample_size,
+        cf <- mvrnorm(n = 2 * sample_size,
                       mu = rep(0, 4),
                       Sigma = diag(x = 0.7, nrow = 4, ncol = 4) + 0.3)
-        cf5 <- sample(c((-2):2), sample_size, replace = T)
-        cf6 <- runif(sample_size, min = -3, max = 3)
+        cf5 <- sample(c((-2):2), 2 * sample_size, replace = T)
+        cf6 <- runif(2 * sample_size, min = -3, max = 3)
       } else if (confounder_setting == "complex"){
-        cf <- mvrnorm(n = sample_size,
+        cf <- mvrnorm(n = 2 * sample_size,
                       mu = rep(2, 4),
                       Sigma = diag(x = 0.7, nrow = 4, ncol = 4) + 0.3)
-        cf5 <- sample(c((-3):2), sample_size, replace = T)
-        cf6 <- runif(sample_size, min = -1, max = 4)
+        cf5 <- sample(c((-3):2), 2 * sample_size, replace = T)
+        cf6 <- runif(2 * sample_size, min = -1, max = 4)
       } else {
         stop("Confounder settings are either simple, nonzero, correlated, or complex")
       }
@@ -115,16 +116,20 @@ for (sample_size in c(200, 1000, 10000)) {
         if (gps_mod == 1) {
           x = 9 * cov_function(confounders) + 18 + rnorm(sample_size, mean = 0, sd = sqrt(10))
           exposure = x[x > 0]
+          exposure = sample(exposure, sample_size, replace = F)
           #exposure = scale_exposure((cov_function(confounders)) + rnorm(sample_size, mean = 0, sd = sqrt(10)))
         } else if (gps_mod == 2) {
           x = 9 * cov_function(confounders) + 18 + (sqrt(5)) * rt(sample_size, df = 3)
           exposure = x[x > 0]
+          exposure = sample(exposure, sample_size, replace = F)
         } else if (gps_mod == 3) {
           x = 9 * cov_function(confounders) + 15 + 2 * (confounders[, "cf3"]) ^ 2 + rnorm(sample_size, mean = 0, sd = sqrt(10))
           exposure = x[x > 0]
+          exposure = sample(exposure, sample_size, replace = F)
         } else if (gps_mod == 4) {
           x = 9 * cov_function(confounders) + 2 * (confounders[, "cf3"]) ^ 2 + 2 * (confounders[, "cf1"]) * (confounders[, "cf4"]) + 15 + rnorm(sample_size, mean = 0, sd = sqrt(10))
           exposure = x[x > 0]
+          exposure = sample(exposure, sample_size, replace = F)
         }
         
         # Get metrics and predictions from sample
