@@ -292,6 +292,9 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
     # Now fit threshold model 
     if (adjust_confounder) {
       change_model <- chngptm(Y ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, ~ exposure, family = "gaussian", type = "segmented", var.type = "bootstrap", save.boot = T, data = data_example)
+      change_model_ent <- chngptm(Y ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, ~ exposure, family = "gaussian", 
+                                  type = "segmented", var.type = "bootstrap", save.boot = T, data = data_example, weights = IPW)
+      
     } else {
       # fit unadjusted model
       change_model <- chngptm(Y ~ 1, ~ exposure, family = "gaussian", type = "segmented", var.type = "bootstrap", save.boot = T, data = data_example)
@@ -304,6 +307,11 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
     change_assesed = change_model$chngpt
     change_lower = summary(change_model)$chngpt[["(lower"]]
     change_upper = summary(change_model)$chngpt[["upper)"]]
+    
+    # Do the same change point assessed using entropy weights 
+    change_assesed_ent = change_model_ent$chngpt
+    change_lower_ent = summary(change_model_ent)$chngpt[["(lower"]]
+    change_upper_ent = summary(change_model_ent)$chngpt[["upper)"]]
   
   # Now many points to evaluate the integral
   discrete_points = 1000
@@ -484,10 +492,14 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
     geom_line() +
     labs(x = "Exposure concentration", y = "Relative risk of death")
   
-  # Add specified change point here
+  # Add specified change point here for both unweighted and entropy weighted example
   data_prediction$change_point = change_assesed
   data_prediction$change_lower = change_lower
   data_prediction$change_upper = change_upper
+  
+  data_prediction$change_point_ent = change_assesed_ent
+  data_prediction$change_lower_ent = change_lower_ent
+  data_prediction$change_upper_ent = change_upper_ent
   
   
   data_metrics <- 
@@ -495,12 +507,17 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
     tidyr::gather(model_types, key = "model", value = "prediction") %>% 
     data.table()
   
+  # Changing metric to calculate the bias, and also the absolute bias
   data_metrics <- 
     data_metrics[, .(bias = prediction - true_fit,
+                     abs_bias = abs(prediction - true_fit),
                      mse = (prediction - true_fit) ^ 2), by = .(model)]
   
-  data_metrics <- data_metrics[, .(bias = mean(bias), mse = mean(mse)), by = .(model)]
-  return_columns <- c("exposure", model_types, "true_fit", "change_point", "change_lower", "change_upper")
+  data_metrics <- data_metrics[, .(bias = mean(bias),
+                                   abs_bias = mean(abs_bias),
+                                   mse = mean(mse)), by = .(model)]
+  return_columns <- c("exposure", model_types, "true_fit", "change_point", "change_lower", "change_upper",
+                      "change_point_ent", "change_lower_ent", "change_upper_ent")
   return(list(metrics = data_metrics, predictions = data_prediction[, ..return_columns], cor_table = correlation_table, 
               pseudo_pop_default = pseudo_pop_default, pseudo_pop_tuned = pseudo_pop_tuned))
 }

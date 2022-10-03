@@ -107,29 +107,44 @@ for (sample_size in c(200, 1000, 10000)) {
       }
     
     # Bring together confounders and name
-    confounders = cbind(cf, cf5, cf6)
-    colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+    confounders_large = cbind(cf, cf5, cf6)
+    colnames(confounders_large) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
     
     # Loop through each iteration of the GPS model included 
       for (gps_mod in 1:4) {
         # Generate appropriate exposure (make this a function later)
         if (gps_mod == 1) {
-          x = 9 * cov_function(confounders) + 18 + rnorm(sample_size, mean = 0, sd = sqrt(10))
-          exposure = x[x > 0]
-          exposure = sample(exposure, sample_size, replace = F)
-          #exposure = scale_exposure((cov_function(confounders)) + rnorm(sample_size, mean = 0, sd = sqrt(10)))
+          x = 9 * cov_function(confounders_large) + 18 + rnorm(sample_size, mean = 0, sd = sqrt(10))
+          exposure_df <- 
+            cbind(data.frame(confounders), exposure = x) %>% 
+            filter(exposure > 0) %>% 
+            slice_sample(n = sample_size, replace = F)
+          exposure = exposure_df$exposure
+          confounders = as.matrix(exposure_df[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")])
         } else if (gps_mod == 2) {
-          x = 9 * cov_function(confounders) + 18 + (sqrt(5)) * rt(sample_size, df = 3)
-          exposure = x[x > 0]
-          exposure = sample(exposure, sample_size, replace = F)
+          x = 9 * cov_function(confounders_large) + 18 + (sqrt(5)) * rt(sample_size, df = 3)
+          exposure_df <- 
+            cbind(data.frame(confounders), exposure = x) %>% 
+            filter(exposure > 0) %>% 
+            slice_sample(n = sample_size, replace = F)
+          exposure = exposure_df$exposure
+          confounders = as.matrix(exposure_df[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")])
         } else if (gps_mod == 3) {
-          x = 9 * cov_function(confounders) + 15 + 2 * (confounders[, "cf3"]) ^ 2 + rnorm(sample_size, mean = 0, sd = sqrt(10))
-          exposure = x[x > 0]
-          exposure = sample(exposure, sample_size, replace = F)
+          x = 9 * cov_function(confounders_large) + 15 + 2 * (confounders_large[, "cf3"]) ^ 2 + rnorm(sample_size, mean = 0, sd = sqrt(10))
+          exposure_df <- 
+            cbind(data.frame(confounders), exposure = x) %>% 
+            filter(exposure > 0) %>% 
+            slice_sample(n = sample_size, replace = F)
+          exposure = exposure_df$exposure
+          confounders = as.matrix(exposure_df[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")])
         } else if (gps_mod == 4) {
-          x = 9 * cov_function(confounders) + 2 * (confounders[, "cf3"]) ^ 2 + 2 * (confounders[, "cf1"]) * (confounders[, "cf4"]) + 15 + rnorm(sample_size, mean = 0, sd = sqrt(10))
-          exposure = x[x > 0]
-          exposure = sample(exposure, sample_size, replace = F)
+          x = 9 * cov_function(confounders_large) + 2 * (confounders_large[, "cf3"]) ^ 2 + 2 * (confounders_large[, "cf1"]) * (confounders_large[, "cf4"]) + 15 + rnorm(sample_size, mean = 0, sd = sqrt(10))
+          exposure_df <- 
+            cbind(data.frame(confounders), exposure = x) %>% 
+            filter(exposure > 0) %>% 
+            slice_sample(n = sample_size, replace = F)
+          exposure = exposure_df$exposure
+          confounders = as.matrix(exposure_df[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")])
         }
         
         # Get metrics and predictions from sample
