@@ -232,7 +232,6 @@ pred_sample <-
 true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
 
 
-
 gg_trace_plot <- 
   ggplot() +
   geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +

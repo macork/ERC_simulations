@@ -507,7 +507,7 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
     data_prediction %>% 
     tidyr::gather(model_types, key = "model", value = "prediction") %>% 
     data.table()
-  
+
   # Changing metric to calculate the bias, and also the absolute bias. Return it all for now
   data_metrics <- 
     data_metrics[, .(bias = prediction - true_fit,

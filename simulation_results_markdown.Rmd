@@ -742,21 +742,21 @@ rmse_sublinear_plot <-
   geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
   #scale_y_continuous(trans='log10') + 
   theme_bw() + 
-<<<<<<< HEAD
   #coord_cartesian(ylim = c(-15, 15)) + 
   facet_wrap(~ out_relationship) + 
   labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias facet by outcome relationship"))
 plot_bias_linear
-=======
-  theme(legend.position = "bottom") + 
-  guides(colour = guide_legend(nrow = 1)) + 
-  theme(text = element_text(size=14),
-        axis.text.x = element_text(size = 12)) + 
-  #coord_cartesian(ylim = c(-15, 15)) + 
-  facet_grid(sample_size ~ out_relationship, scales = "free", labeller = labeller(out_relationship= outcome_label)) + 
-  #facet_wrap(~ out_relationship, scales = "free") + 
-  labs(y = "RMSE", x = "Exposure model")
->>>>>>> 436399a4793fce3469899f6f620afd384a005eb1
+
+
+# this was edited out, not sure 
+  # theme(legend.position = "bottom") + 
+  # guides(colour = guide_legend(nrow = 1)) + 
+  # theme(text = element_text(size=14),
+  #       axis.text.x = element_text(size = 12)) + 
+  # #coord_cartesian(ylim = c(-15, 15)) + 
+  # facet_grid(sample_size ~ out_relationship, scales = "free", labeller = labeller(out_relationship= outcome_label)) + 
+  # #facet_wrap(~ out_relationship, scales = "free") + 
+  # labs(y = "RMSE", x = "Exposure model")
 
 rmse_sublinear_plot
 
@@ -778,7 +778,6 @@ plot_data_sublinear %>%
   labs(x = "Scenario", y = "Value") + 
   #scale_y_continuous(trans='log10') + 
   theme_bw() + 
-<<<<<<< HEAD
   #coord_cartesian(ylim = c(-15, 15)) + 
   facet_wrap(~ sample_size) + 
   labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias as a function of sample size"))
@@ -797,14 +796,14 @@ plot_data_linear %>%
   # coord_cartesian(ylim = c(-15, 15)) + 
   facet_wrap(~ confounder_setting) + 
   labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias facet by confounder distribution"))
-=======
+
   theme(legend.position = "bottom") + 
   guides(colour = guide_legend(nrow = 1)) + 
   facet_wrap(~ sample_size) + 
   labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias as a function of sample size"))
 
 ```
->>>>>>> 436399a4793fce3469899f6f620afd384a005eb1
+
 
 When fixing the sample size at 1000, we compare the mse of our model when the outcome model is linear, or an interaction (facet on x axis) or when the confounders have mean zero (simple) or nonzero (nonzero), shown on the facet on the y axis. 
 ```{r}
@@ -939,11 +938,7 @@ gg_trace_plot_interaction <-
   geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
   labs(x = "Exposure", y = "Response", title = "ERC curve in simple covariate setting with interaction outcome model") +
   theme_bw() +
-<<<<<<< HEAD
   #coord_cartesian(ylim = c(-20, 20)) + 
-=======
-  coord_cartesian(ylim = c(5, 35)) + 
->>>>>>> 436399a4793fce3469899f6f620afd384a005eb1
   facet_grid(name ~ gps_mod) + 
   theme(legend.position = "none") + 
   theme(text = element_text(size = 12))  
@@ -1040,12 +1035,8 @@ plot_data_threshold %>%
   labs(x = "Scenario", y = "Value") + 
   #scale_y_continuous(trans='log10') + 
   theme_bw() + 
-<<<<<<< HEAD
-  #coord_cartesian(ylim = c(-20, 20)) + 
-=======
   theme(legend.position = "bottom") + 
   guides(colour = guide_legend(nrow = 1)) + 
->>>>>>> 436399a4793fce3469899f6f620afd384a005eb1
   facet_wrap(~ sample_size) + 
   labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias as a function of sample size"))
 
@@ -1184,11 +1175,7 @@ gg_trace_plot_interaction <-
   geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
   labs(x = "Exposure", y = "Response", title = "ERC curve in simple covariate setting with interaction outcome model") +
   theme_bw() +
-<<<<<<< HEAD
-  #coord_cartesian(ylim = c(-5, 10)) + 
-=======
   coord_cartesian(ylim = c(0, 60)) + 
->>>>>>> 436399a4793fce3469899f6f620afd384a005eb1
   facet_grid(name ~ gps_mod) + 
   theme(legend.position = "none") + 
   theme(text = element_text(size = 12))  
@@ -1528,3 +1515,4 @@ How do different propensity score models impact estimation of the ERC?
 How do different covariate effects on the outcome impact estimation of the ERC (covariate-outcome effect)?
 How do different covariate distributions affect estimation of ERC?
 How does sample size impact estimation of the ERC?
+
