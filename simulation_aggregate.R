@@ -3,13 +3,18 @@
 library(tidyverse)
 library(data.table)
 
-exp_relationship = "linear"
+exp_relationship = "threshold"
 adjust_confounder = T
-time_stamp = "linear_interaction_complex"
+time_stamp = "first_draft2"
 replicates = 100
 
-results_dir <- paste0("/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/results/",
-                      exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
+if (Sys.getenv("USER") == "mcork") {
+  repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
+} else if (Sys.getenv("USER") == "michaelcork") {
+  repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
+}
+
+results_dir <- paste0(repo_dir, "/results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
 
 
 
@@ -49,158 +54,4 @@ correlation <-
 saveRDS(list(metrics = metrics, predictions = predictions, correlation = correlation),
         file = paste0(results_dir, "aggregated_results.RDS"))
 
-
-gg_correlation_ipw <-
-  correlation %>% 
-  filter(method == "ipw") %>% 
-  group_by(gps_mod, covariate) %>% 
-  dplyr::summarize(pre_weight = mean(pre_cor), post_weight = mean(post_cor)) %>% 
-  pivot_longer(c("pre_weight", "post_weight")) %>%
-  mutate(name = factor(name, levels = unique(name))) %>%
-  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
-                                    gps_mod == 2 ~ "heavy tail", 
-                                    gps_mod == 3 ~ "nonlinear", 
-                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
-  ggplot(aes(x = covariate, y = value, color = name, group = name)) +
-  geom_hline(aes(yintercept = 0.1)) + 
-  geom_point() +
-  geom_line() +
-  theme_bw() +
-  coord_flip() + 
-  facet_wrap(~ gps_mod) + 
-  labs(y = "Absolute correlation", x = "Covariate", title = "Comparing covariate balance under different design settings for IPW")
-gg_correlation_ipw
-
-gg_correlation_default <-
-  correlation %>% 
-  filter(method == "causal_gps_default") %>% 
-  group_by(gps_mod, covariate) %>% 
-  dplyr::summarize(pre_weight = mean(pre_cor), post_weight = mean(post_cor)) %>% 
-  pivot_longer(c("pre_weight", "post_weight")) %>%
-  mutate(name = factor(name, levels = unique(name))) %>%
-  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
-                                    gps_mod == 2 ~ "heavy tail", 
-                                    gps_mod == 3 ~ "nonlinear", 
-                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
-  ggplot(aes(x = covariate, y = value, color = name, group = name)) +
-  geom_hline(aes(yintercept = 0.1)) + 
-  geom_point() +
-  geom_line() +
-  theme_bw() +
-  coord_flip() + 
-  facet_wrap(~ gps_mod) + 
-  labs(y = "Absolute correlation", x = "Covariate", title = "Comparing covariate balance under different design settings for causal GPS default")
-
-gg_correlation_default
-
-gg_correlation_tuned <-
-  correlation %>% 
-  filter(method == "causal_gps_tuned") %>% 
-  group_by(gps_mod, covariate) %>% 
-  dplyr::summarize(pre_weight = mean(pre_cor), post_weight = mean(post_cor)) %>% 
-  pivot_longer(c("pre_weight", "post_weight")) %>%
-  mutate(name = factor(name, levels = unique(name))) %>%
-  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
-                                    gps_mod == 2 ~ "heavy tail", 
-                                    gps_mod == 3 ~ "nonlinear", 
-                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
-  ggplot(aes(x = covariate, y = value, color = name, group = name)) +
-  geom_hline(aes(yintercept = 0.1)) + 
-  geom_point() +
-  geom_line() +
-  theme_bw() +
-  coord_flip() + 
-  facet_wrap(~ gps_mod) + 
-  labs(y = "Absolute correlation", x = "Covariate", title = "Comparing covariate balance under different design settings for causal GPS default")
-
-gg_correlation_tuned
-
-plot_data <- 
-  metrics %>% 
-  mutate(absolute_bias = abs(bias)) %>% 
-  tidyr::pivot_longer(c("bias", "absolute_bias", "mse")) %>% 
-  mutate(model = factor(model, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model", "propensity_change")))  %>% 
-  dplyr::group_by(model, gps_mod, sample_size, name) %>% 
-  dplyr::summarize(mean = mean(value), 
-                   lower = quantile(value, 0.05),
-                   upper = quantile(value, 0.95)) %>% 
-  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
-                                    gps_mod == 2 ~ "heavy tail", 
-                                    gps_mod == 3 ~ "nonlinear", 
-                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction")))
-
-plot_data %>% 
-  filter(name == "bias") %>% 
-  ggplot() + 
-  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
-  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
-  labs(x = "Scenario", y = "Value") + 
-  theme_bw() + 
-  coord_cartesian(ylim = c(-20, 20)) + 
-  facet_wrap(sample_size ~ name, scales = "free")
-
-plot_data %>% 
-  filter(name == "absolute_bias", sample_size == 1000) %>% 
-  ggplot() + 
-  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
-  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
-  labs(x = "Scenario", y = "Value") + 
-  coord_cartesian(ylim = c(0, 35)) + 
-  theme_bw() + 
-  facet_grid(sample_size ~ name, scales = "free")
-
-plot_data %>% 
-  filter(name == "mse") %>% 
-  ggplot() + 
-  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
-  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype = "dashed", size = 0.2) + 
-  labs(x = "Scenario", y = "Value") + 
-  theme_bw() + 
-  coord_cartesian(ylim = c(0, 400)) + 
-  facet_grid(sample_size ~ name, scales = "free")
-
-# Now make trace plots 
-# Make prediction plots
-pred_plot <-
-  predictions %>%
-  tidyr::pivot_longer(c("linear_model", "linear_gps", "gam_model", "gam_gps", "change_model", "causal_gps_default", "causal_gps_tuned", "true_fit")) %>%
-  mutate(name = factor(name, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model", "propensity_change", "true_fit"))) %>% 
-  data.table()
-
-pred_summary <-
-  pred_plot[,.(mean = mean(value),
-               lower = quantile(value, 0.1),
-               upper = quantile(value, 0.9)), by=.(gps_mod, exposure, sample_size, name)] %>% 
-  mutate(name = relevel(name, ref = "linear_model")) %>% 
-  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
-                                    gps_mod == 2 ~ "heavy tail", 
-                                    gps_mod == 3 ~ "nonlinear", 
-                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
-  data.table()
-
-# Get a sample of predictions to plot
-pred_sample <- 
-  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
-  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
-                                    gps_mod == 2 ~ "heavy tail", 
-                                    gps_mod == 3 ~ "nonlinear", 
-                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
-  data.table()
-
-true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
-
-
-
-ggplot() +
-  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +
-  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
-  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
-  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
-  labs(x = "Exposure", y = "Response") +
-  theme_bw() +
-  coord_cartesian(ylim = c(-20, 20)) + 
-  facet_grid(name ~ gps_mod) + 
-  theme(legend.position = "none")
-
-
-
+# Now run figures code

@@ -1,6 +1,8 @@
 # Make sure you are not keeping data on github becuase it could be sensitive 
 data/
 *.nc
+*.RDS
+*.RData
 *.rst
 *.pdf
 *.html
