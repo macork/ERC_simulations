@@ -1,4 +1,4 @@
-# Make sure you are not keeping data on github becuase it could be sensitive 
+# Ignore these files in order to keep code only on Github, not release sensitive information
 data/
 *.nc
 *.RDS
