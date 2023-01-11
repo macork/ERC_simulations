@@ -1,4 +1,5 @@
 # Script to run after finished running through simulation
+# Aggregates all fo the simulations and stores them in one RDS file
 
 library(tidyverse)
 library(data.table)

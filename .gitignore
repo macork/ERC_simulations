@@ -8,3 +8,4 @@ data/
 *.html
 results/**/**/sim_final*
 Logs/
+results/
