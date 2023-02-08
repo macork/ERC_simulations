@@ -7,9 +7,9 @@ library(fastDummies)
 library(mgcv)
 library(Rcpp)
 library(RcppEigen)
-library(CausalGPS)
+library("CausalGPS", lib.loc = "/n/home_fasse/mcork/apps/ERC_simulation/R_4.0.5")
 
-input_flag <- "quantile_removed"
+input_flag <- "boot_run"
 
 # load in data
 proj_dir <- "/n/dominici_nsaph_l3/Lab/projects/"
@@ -18,7 +18,7 @@ dir.create(out_dir)
 
 data <- readRDS(paste0(proj_dir, "analytic/aggregated_2000-2016_medicare_mortality_pm25_zip/aggregate_data.RDS"))
 
-#data_test <- sample_n(data, 1000)
+#data_test <- sample_n(data, 5000)
 # Aggregate age groups and races 
 # Only include, white, black, hispanic, other 
 #data[, race := ifelse(race == 0, race = 1, race)]
@@ -36,7 +36,7 @@ data[, entry_age_break := ifelse(entry_age_break == 8, 7, entry_age_break)]
 # See percent of age in each category
 count(data, entry_age_break) %>% mutate(n = n / sum(n))
 
-# Now aggregate over races
+# Now aggregate over races (removing unknown race)
 data <- 
   data %>% 
   filter(race != 0) %>% 
@@ -48,6 +48,8 @@ count(data, race) %>% mutate(n = n / sum(n))
 # now aggregate over age, sex, dual, zip code, year
 group_cols <- setdiff(names(data), c("dead", "time_count"))
 
+#data1 <- data %>% select(-dead, -time_count, -followup_year) %>% data.table()
+
 # Collapse over these values in data table to save time
 data <- data[, .(dead = sum(dead), time_count = sum(time_count)), by = group_cols]
 
@@ -57,25 +59,33 @@ data <- data[, .(dead = sum(dead), time_count = sum(time_count)), by = group_col
 data[, mort_rate := dead / time_count]
 
 # now trim upper and lower quantiles
-lower_pm <- quantile(data$pm25_ensemble, 0.025)
-upper_pm <- quantile(data$pm25_ensemble, 0.975)
+lower_pm <- quantile(data$pm25_ensemble, 0.01)
+upper_pm <- quantile(data$pm25_ensemble, 0.99)
 
-data <- 
-  data %>% 
-  filter(between(pm25_ensemble, lower_pm, upper_pm)) %>% 
+data <-
+  data %>%
+  filter(between(pm25_ensemble, lower_pm, upper_pm)) %>%
   data.table()
 
-# Find minimum and maximum
-min_pm <- min(data$pm25_ensemble)
-max_pm <- max(data$pm25_ensemble)
+# # Create weighted percentile by the number of counts
+# data1 <- 
+#   data %>% 
+#   arrange(pm25_ensemble) %>% 
+#   mutate(wtd_ptile = lag(cumsum(time_count), default = 0)/(sum(time_count) - 1))
+# 
+# wtd_lower <- data1 %>% filter(wtd_ptile < .025) %>% slice_tail() %>% pull(pm25_ensemble)
+# wtd_upper <- data1 %>% filter(wtd_ptile >= .975) %>% slice_head()
+
+# Display minimum and maximum
+min(data$pm25_ensemble)
+max(data$pm25_ensemble)
 
 # Make sure data is stored in correct form 
 data[, region := as.factor(region)]
-data[, sex := as.factor(sex)]
+data[, sex := as.factor(sex - 1)]
 data[, race := as.factor(race)]
 data[, entry_age_break := as.factor(entry_age_break)]
 data[, dual := as.factor(dual)]
-names(data)
 
 # histogram of mortality rate
 data_hist <- 
@@ -121,3 +131,20 @@ ggsave(gg_log_mort, file = paste0(out_dir, "/log_mort.pdf"))
 
 # Save input data to model folder (make sure not pushed to github)
 saveRDS(data, file = paste0(out_dir, "/input_data.RDS"))
+
+# Now create m out of n dataset for uncertainty quantification
+n <- nrow(data)
+m <- round(n / log(n))
+
+dir.create(paste0(out_dir, "/boostrap/"))
+
+# Save 100 datasets for bootstrap, will later be used
+lapply(1:100, function(i) {
+  set.seed(i)
+  resampled_data <- data[sample(.N, m)]
+  saveRDS(resampled_data, file = paste0(out_dir, "/boostrap/boot_data_", i, ".RDS"))
+})
+
+message("Done")
+
+

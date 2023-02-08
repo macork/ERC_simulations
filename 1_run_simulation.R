@@ -13,9 +13,10 @@ library(caret)
 library(WeightIt)
 library(chngpt)
 library(cobalt)
-# library("devtools")
-#install_github("fasrc/CausalGPS")
-library("CausalGPS")
+#library("devtools")
+#install_github("fasrc/CausalGPS", force = T)
+library("CausalGPS", lib.loc = "/n/home_fasse/mcork/apps/ERC_simulation/R_4.0.5")
+# Change location of library so that it grabs the correct version of CausalGPS package
 
 
 # File paths

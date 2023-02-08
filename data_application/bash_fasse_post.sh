@@ -14,4 +14,4 @@
 
 module load gcc/9.3.0-fasrc01 R/4.0.5-fasrc02
 
-R CMD BATCH --no-save "--args $1 $2" post_processing.R Logs/data_app_fasse_post.Rout
+R CMD BATCH --no-save "--args $1 $2" 2_post_processing.R Logs/data_app_fasse_post.Rout
