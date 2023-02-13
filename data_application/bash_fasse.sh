@@ -15,4 +15,4 @@
 
 module load gcc/9.3.0-fasrc01 R/4.0.5-fasrc02
 
-R CMD BATCH --no-save "--args $1 $2 $3 $4" 1_model_fit.R Logs/data_app_fasse_$2.Rout
+R CMD BATCH --no-save "--args $1 $2" 1_model_fit.R Logs/data_app_fasse_$2.Rout

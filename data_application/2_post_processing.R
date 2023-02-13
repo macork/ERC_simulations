@@ -17,142 +17,172 @@ model_flag = as.character(args[[2]])
 # load in data
 proj_dir <- "/n/dominici_nsaph_l3/Lab/projects/"
 data <- readRDS(paste0(proj_dir, "ERC_simulation/Medicare_data/model_input/", input_flag, "/input_data.RDS"))
-
 model_dir <- paste0(proj_dir, "ERC_simulation/Simulation_studies/data_application/model_fits/", model_flag, "/")
 
-# load the linear model fit
+# load the models if doing post processing only
 linear_fit <- readRDS(file = paste0(model_dir, "linear.RDS"))
-
-# Load GAM fit 
 gam_fit <- readRDS(file = paste0(model_dir, "gam.RDS"))
-
-# Load linear entropy weights
 linear_ent <- readRDS(file = paste0(model_dir, "linear_ent.RDS"))
-
-# Load gam entropy weights
 gam_ent <- readRDS(file = paste0(model_dir, "gam_ent.RDS"))
 
 # Load causal fit 
-model_dir <- paste0(proj_dir, "ERC_simulation/Simulation_studies/data_application/model_fits/causal_run1/")
-pseudo_pop <- readRDS(file = paste0(model_dir, "pseudo_pop5.RDS"))
-psuedo_pop_frame <- data.table(pseudo_pop$pseudo_pop)
-
-causal_gps <- 
-  mgcv::bam(formula = Y ~ s(w, bs = 'cr', k = 4),
-            family = "gaussian",
-            data = psuedo_pop_frame,
-            weights = counter_weight)
-
-
-# causal_fit <- readRDS(file = paste0(proj_dir, "ERC_simulation/data_application/model_fits/causal_fit.RDS"))
-# causal_fit <- readRDS(file = paste0(proj_dir, "ERC_simulation/data_application/model_fits/causal_fit.RDS"))
-
-# find min and max
-min_pm <- min(data$pm25_ensemble)
-max_pm <- max(data$pm25_ensemble)
-
-data_prediction <- 
-  rbindlist(lapply(seq(min_pm, max_pm, length.out = 10), function(pot_exp) {
-    
-    potential_data <- mutate(data, pm25_ensemble = pot_exp)
-    
-    # Fit each model and take mean for ERC
-    potential_outcome <- 
-      potential_data %>% 
-      mutate(
-        linear_model = predict(linear_fit, potential_data, type = "response"),
-        gam_model = predict(gam_fit, newdata = potential_data, type = "response"),
-        #change_model = predict(change_model, newdata = potential_data, type = "response"),
-        linear_ent = predict(linear_ent, potential_data, type = "response"),
-        gam_ent = predict(gam_ent, newdata = potential_data, type = "response"),
-        #change_ent = predict(change_ent, newdata = potential_data, type = "response"),
-        causal_model =  predict(causal_gps, newdata = rename(potential_data, w = pm25_ensemble), type = "response")
-             ) %>% 
-      dplyr::select(pm25_ensemble, linear_model, linear_ent, gam_model, gam_ent, causal_model) %>% 
-      summarize_all(mean) %>% 
-      data.table()
-    return(potential_outcome)
-  }))
-
-saveRDS(data_prediction, file = paste0(model_dir, "data_prediction.RDS"))
+pseudo_pop <- readRDS(file = paste0(model_dir, "pseudo_pop.RDS"))
+causal_gps <- readRDS(file = paste0(model_dir, "causal_fit.RDS"))
 
 model_types <- c("linear_model", "gam_model", "linear_ent", "gam_ent", "causal_model")
 
 data_prediction <- readRDS(file = paste0(model_dir, "data_prediction.RDS"))
 
-# Plot the fits from this sample
-mortality_plot <- 
+mortality_data <- 
   data_prediction %>% 
   pivot_longer(c(all_of(model_types)), names_to = "model", values_to = "prediction") %>%
-  arrange(pm25_ensemble) %>%
-  ggplot(aes(x = pm25_ensemble, y = exp(prediction), color = model, linetype = model)) +
+  arrange(pm25_ensemble) %>% 
+  mutate(prediction = exp(prediction))
+
+saveRDS(mortality_data, file = paste0(model_dir, "mortality_data.RDS"))
+
+mortality_plot <- 
+  mortality_data %>%
+  ggplot(aes(x = pm25_ensemble, y = prediction, color = model, linetype = model)) +
   geom_line() +
   labs(x = "Exposure concentration", y = "Mortality rate")
 
 ggsave(mortality_plot, file = paste0(model_dir, "mortality_plot.pdf"))
 
-relative_rate_plot <- 
+
+relative_rate_data <- 
   data_prediction %>% 
+  arrange(pm25_ensemble) %>%
   mutate(linear_model = linear_model - data_prediction$linear_model[1]) %>%
   mutate(linear_ent = linear_ent - data_prediction$linear_ent[1]) %>%
   mutate(gam_model = gam_model - data_prediction$gam_model[1]) %>%
   mutate(gam_ent = gam_ent - data_prediction$gam_ent[1]) %>%
+  mutate(causal_model = causal_model - data_prediction$causal_model[1]) %>%
   pivot_longer(c(all_of(model_types)), names_to = "model", values_to = "prediction") %>%
+  mutate(prediction = exp(prediction)) %>% 
+  data.table()
+
+saveRDS(relative_rate_data, file = paste0(model_dir, "relative_rate.RDS"))
+
+relative_rate_data2 <- 
+  data_prediction %>% 
   arrange(pm25_ensemble) %>%
-  ggplot(aes(x = pm25_ensemble, y = exp(prediction), color = model, linetype = model)) +
+  mutate(linear_model = linear_model - data_prediction[70, linear_model]) %>%
+  mutate(linear_ent = linear_ent - data_prediction[70, linear_ent]) %>%
+  mutate(gam_model = gam_model - data_prediction[70, gam_model]) %>%
+  mutate(gam_ent = gam_ent - data_prediction[70,gam_ent]) %>%
+  mutate(causal_model = causal_model - data_prediction[70,causal_model]) %>%
+  pivot_longer(c(all_of(model_types)), names_to = "model", values_to = "prediction") %>%
+  mutate(prediction = exp(prediction)) %>% 
+  data.table()
+
+relative_rate_plot <-
+  relative_rate_data2 %>%
+  ggplot(aes(x = pm25_ensemble, y = prediction, color = model, linetype = model)) +
   geom_line() +
-  labs(x = "Exposure concentration", y = "Relative mortality rate")
+  coord_cartesian(xlim = c(4, 12)) + 
+  labs(x = "Annual Average PM2.5", y = "Hazard Ratio")
 
 ggsave(relative_rate_plot, file = paste0(model_dir, "relative_rate_plot.pdf"))
 
-# Plot the contrasts
-contrasts <- c(8, 9, 10, 12)
-
-b = c(8, 12)
-c1 <- 
-  data_prediction %>%  
-  filter(abs(pm25_ensemble - b[1]) == min(abs(pm25_ensemble - b[1])))
-c2 <- 
-  data_prediction %>%  
-  filter(abs(pm25_ensemble - b[2]) == min(abs(pm25_ensemble - b[2])))
-
-contrast8_12 <- 1 - exp(c1 - c2) %>% select(!!model_types)
-
-b = c(9, 12)
-c1 <- 
-  data_prediction %>%  
-  filter(abs(pm25_ensemble - b[1]) == min(abs(pm25_ensemble - b[1])))
-c2 <- 
-  data_prediction %>%  
-  filter(abs(pm25_ensemble - b[2]) == min(abs(pm25_ensemble - b[2])))
-
-contrast9_12 <- 1 - exp(c1 - c2) %>% select(!!model_types)
+# Load contrast data
+contrast_data <- readRDS(file = paste0(model_dir, "contrast_data.RDS"))
 
 
-b = c(10, 12)
-c1 <- 
-  data_prediction %>%  
-  filter(abs(pm25_ensemble - b[1]) == min(abs(pm25_ensemble - b[1])))
-c2 <- 
-  data_prediction %>%  
-  filter(abs(pm25_ensemble - b[2]) == min(abs(pm25_ensemble - b[2])))
+# Load boot data -------------------------------------------------------------
 
-contrast10_12 <- 1 - exp(c1 - c2) %>% select(!!model_types)
+m <- nrow(readRDS(paste0(proj_dir, "ERC_simulation/Medicare_data/model_input/", 
+                         input_flag, "/boostrap/boot_data_100.RDS")))
+n <- nrow(data)
 
-gg_contrast <- 
-  rbind(contrast8_12, contrast9_12, contrast10_12) %>% 
-  cbind(contrast = c(8, 9, 10)) %>% 
-  data.table() %>% 
-  pivot_longer(model_types) %>%
-  ggplot() + 
-  geom_point(aes(x = contrast, y = 100 * value, color = name), size = 3) +
-  labs(x = "Lower emission limit", y = "Percent Reduction\nin relative mortality", 
-       title = "Reduction in mortality by reducing limit from 12 ug/ml3")
+boot_dir <- paste0(model_dir, "/boostrap/")
+mort_boot <- 
+  rbindlist(lapply(1:100, function(i){
+    boot_data <- readRDS(paste0(boot_dir, "/", i, "/mortality_data.RDS"))
+    boot_data <- data.table(boot_data)
+    boot_data[, sim := i]
+    return(boot_data)
+  }))
 
-ggsave(gg_contrast, file = paste0(model_dir, "contrast_plot.pdf"))
+mort_se <- 
+  mort_boot %>%
+  group_by(pm25_ensemble, model) %>%
+  summarize(var = var(prediction) * m/n) %>%
+  mutate(se = sqrt(var))
+
+gg_mort_se <- 
+  mortality_data %>%
+  left_join(mort_se) %>%
+  mutate(upper = prediction + 1.96*se, 
+         lower = prediction - 1.96*se) %>%
+  ggplot(aes(x = pm25_ensemble, y = prediction, color = model, linetype = model)) +
+  geom_line() +
+  geom_ribbon((aes(ymin = lower, ymax = upper, fill = model)), alpha = 0.4, color = NA) + 
+  labs(x = "Exposure concentration", y = "Mortality rate")
+  
+ggsave(gg_mort_se, file = paste0(model_dir, "mortality_se.pdf"))
+
+
+#mortality_data$upper <- mortality_data$prediction + 1.96 * mort_se$se
+
+relative_boot <- 
+  rbindlist(lapply(1:100, function(i){
+    boot_data <- readRDS(paste0(boot_dir, "/", i, "/relative_rate.RDS"))
+    boot_data <- data.table(boot_data)
+    boot_data[, sim := i]
+    return(boot_data)
+  }))
+
+relative_rate_se <- 
+  relative_boot %>%
+  group_by(pm25_ensemble, model) %>%
+  summarize(var = var(prediction) * m/n) %>%
+  mutate(se = sqrt(var))
+
+
+gg_relative_se <- 
+  relative_rate_data2 %>%
+  left_join(relative_rate_se) %>%
+  mutate(upper = prediction + 1.96*se, 
+         lower = prediction - 1.96*se) %>%
+  ggplot(aes(x = pm25_ensemble, y = prediction, color = model, linetype = model)) +
+  geom_line() +
+  geom_ribbon((aes(ymin = lower, ymax = upper, fill = model)), alpha = 0.4, color = NA) + 
+  theme_bw() + 
+  coord_cartesian(xlim = c(4, 12)) + 
+  labs(x = "Annual Average PM2.5", y = "Hazard Ratio")
+
+ggsave(gg_relative_se, file = paste0(model_dir, "relative_se.pdf"))
+
+contrast_boot <- 
+  rbindlist(lapply(1:100, function(i){
+    boot_data <- readRDS(paste0(boot_dir, "/", i, "/contrast_data.RDS"))
+    boot_data <- data.table(boot_data)
+    return(boot_data)
+  }))
+
+contrast_se <- 
+  contrast_boot %>%
+  pivot_longer(-contrast, "model", "value") %>%
+  group_by(contrast, model) %>% 
+  summarize(var = var(value) * m/n) %>%
+  mutate(se = sqrt(var))
+
+gg_contrast_se <- 
+  contrast_data %>%
+  pivot_longer(-contrast, "model", "value") %>%
+  left_join(contrast_se) %>%
+  mutate(upper = value + 1.96*se, 
+         lower = value - 1.96*se) %>%
+  ggplot(aes(x = contrast, y = 100 * value, color = model)) +
+  #geom_point(size = 0.2, position = position_dodge(width = 0.7)) +
+  geom_pointrange(aes(ymin = 100 * lower, ymax = 100 * upper, fill = model), 
+                  size = 0.25, position = position_dodge(width = 0.15)) + 
+  theme_bw() + 
+  labs(x = "Contrast", y = "Percent reductions")
+
 
 # Now work on covariate balance
-model_dir <- paste0(proj_dir, "ERC_simulation/Simulation_studies/data_application/model_fits/", model_flag, "/")
 entropy_weights <- readRDS(file = paste0(model_dir, "entropy_weights.RDS"))
 post_weight <- cov.wt(entropy_weights[, 1:20], entropy_weights$ent_weights, TRUE)$cor[, 1]
 pre_weight <- cor(entropy_weights[, 1:20])[, 1]

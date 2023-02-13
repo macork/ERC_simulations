@@ -1,8 +1,5 @@
 rm(list = ls())
 
-# Set library path
-
-
 # Data application
 library(data.table)
 library("CausalGPS", lib.loc = "/n/home_fasse/mcork/apps/ERC_simulation/R_4.0.5")
@@ -19,338 +16,390 @@ library(RcppEigen)
 args <- commandArgs(T)
 input_flag <- as.character(args[[1]])
 model_flag = as.character(args[[2]])
-only_causalgps = as.logical(args[[3]])
-delta_n <- as.numeric(args[[4]])
+only_causalgps = F
+only_post = F
 
 # load in data
 proj_dir <- "/n/dominici_nsaph_l3/Lab/projects/"
 data <- readRDS(paste0(proj_dir, "ERC_simulation/Medicare_data/model_input/", input_flag, "/input_data.RDS"))
 
-data[, year := factor(year)]
-data[, followup_year := factor(followup_year)]
-
 # Create output directory for models
 out_dir <- paste0(proj_dir, "ERC_simulation/Simulation_studies/data_application/model_fits/", model_flag, "/")
 dir.create(out_dir)
+model_dir <- out_dir # old naming convention
 
 # Fit a glm
-if (!only_causalgps) {
-  linear_fit <-
-    lm(log_mort ~ pm25_ensemble + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +as.factor(year) + as.factor(region) +
-                as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
-              data = data)
+if (!only_post) {
+  if (!only_causalgps) {
+    linear_fit <-
+      lm(log_mort ~ pm25_ensemble + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +as.factor(year) + as.factor(region) +
+                  as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
+                data = data)
+    
+    saveRDS(linear_fit, file = paste0(out_dir, "linear.RDS"))
+    
+    # # Fit two gam models for now, one with cubic spline and one with beta spline (penalized)
+    gam_fit <-
+      mgcv::bam(log_mort ~ s(pm25_ensemble, bs = 'cr', k = 4) + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +as.factor(year) + as.factor(region) +
+                  as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
+                data = data)
+    
+    saveRDS(gam_fit, file = paste0(out_dir, "gam.RDS"))
+    
+    # gam_fit_bs <- 
+    #   mgcv::bam(log_mort ~ s(pm25_ensemble, bs = 'bs', k = 20) + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +as.factor(year) + as.factor(region) + 
+    #        as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
+    #      data = data)
+    # 
+    # saveRDS(gam_fit_bs, file = paste0(proj_dir, "ERC_simulation/data_application/model_fits/gam_bs.RDS"))
+    # 
+    # 
+    # change_model <-
+    #   chngptm(log_mort ~ medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +
+    #             as.factor(year) + as.factor(region) + as.factor(sex) + as.factor(race) + as.factor(dual) + 
+    #             as.factor(entry_age_break) + as.factor(followup_year), ~ pm25_ensemble,
+    #           data = data, family = "gaussian", 
+    #           type = "segmented", var.type = "default")
+    # 
+    # saveRDS(change_model, file = paste0(proj_dir, "ERC_simulation/data_application/model_fits/change_model.RDS"))
+    
+    # Now fit the entropy based weights in your model 
+    source(paste0(proj_dir, "ERC_simulation/Simulation_studies/data_application/functions/entropy_wt_functions.R"))
+    
+    data_ent <-
+      data[, c("medhouseholdincome", "medianhousevalue", "poverty", "education",
+               "pct_owner_occ", "year", "region", "sex", "race", "dual", "entry_age_break", "followup_year")]
+    
+    # Create model matrx
+    data_ent_matrix <- model.matrix( ~ -1 + medhouseholdincome + medianhousevalue + poverty + education +
+                                      pct_owner_occ + year + region + sex + race + dual + entry_age_break + followup_year, 
+                                    data = data_ent)
+    
+    #c_mat <- scale(data_ent_matrix, scale = apply(data_ent_matrix, 2, function(x) 0.5*diff(range(x))))
+    #e <- ebal(data_ent$pm25_ensemble, c_mat)
+    
+    
+    # First center non-binary variables 
+    # c_mat <- scale(data_ent_matrix,
+    #                center = apply(c_mat, 2, function(x) {
+    #                  ifelse(length(unique(x)) > 2, mean(x), 0)
+    #                }),
+    #                scale = FALSE)
+    
+    
+    # Now scale to be between -1 and 1
+    c_mat <- scale(data_ent_matrix,
+                   center = T,
+                   scale = apply(data_ent_matrix, 2, function(x) ifelse(max(abs(x)) == 0, 1, max(abs(x)))))
+    
+    #c_mat <- scale(data_ent_matrix, scale = apply(data_ent_matrix, 2, function(x) 0.5*diff(range(x))))
+    e <- ebal(data$pm25_ensemble, c_mat)
+    ent_weights <- e$weights
+    ent_weights[ent_weights > quantile(ent_weights, 0.995)] <- quantile(ent_weights, 0.995)
+    
+    # # Run through one more iteration to get rid of extreme weights
+    e <- ebal(data$pm25_ensemble, c_mat, base_weights = ent_weights)
+    ent_weights <- e$weights
+    ent_weights[ent_weights > quantile(ent_weights, 0.995)] <- quantile(ent_weights, 0.995)
+    
+    # Now save entropy weights and covariate weights
+    cov.wt(cbind(data$pm25_ensemble, c_mat), ent_weights, TRUE)$cor[, 1]
+    cov.wt(cbind(data$pm25_ensemble, data_ent_matrix), ent_weights, TRUE)$cor[, 1]
+    ent_dataset <- data.table(cbind(pm25_ensemble = data$pm25_ensemble, data_ent_matrix, ent_weights))
+    
+    # Save entropy weight output
+    saveRDS(ent_dataset, file = paste0(out_dir, "entropy_weights.RDS"))
+    saveRDS(ent_weights, file = paste0(out_dir, "entropy_weights_raw.RDS"))
+     
+    # Now fit the entropy based weights 
+    linear_ent <-
+      lm(log_mort ~ pm25_ensemble + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +
+           as.factor(year) + as.factor(region) +
+           as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
+         data = data, weights = ent_weights)
+    
+    saveRDS(linear_ent, file = paste0(out_dir, "linear_ent.RDS"))
+    
+    
+    # Fit two gam models for now, one with cubic spline and one with beta spline (penalized)
+    gam_ent <-
+      mgcv::bam(log_mort ~ s(pm25_ensemble, bs = 'cr', k = 4) + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +as.factor(year) + as.factor(region) +
+                  as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
+                data = data, weights = ent_weights)
+    
+    saveRDS(gam_ent, file = paste0(out_dir, "/gam_ent.RDS"))
+    
+    
+    # gam_ent_bs <- 
+    #   mgcv::bam(log_mort ~ s(pm25_ensemble, bs = 'bs', k = 20) + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +as.factor(year) + as.factor(region) + 
+    #               as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
+    #             data = data, weights = ent_weights)
+    # 
+    # saveRDS(gam_ent_bs, file = paste0(proj_dir, "ERC_simulation/data_application/model_fits/gam_ent_bs.RDS"))
+    
+    # # USe MGCV bam instead of gam 
+    # change_ent <-
+    #   chngptm(log_mort ~ medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +
+    #             as.factor(year) + as.factor(region) + as.factor(sex) + as.factor(race) + as.factor(dual) + 
+    #             as.factor(entry_age_break) + as.factor(followup_year), ~ pm25_ensemble,
+    #           data = data, family = "gaussian", 
+    #           type = "segmented", var.type = "default", weights = ent_weights)
+    # 
+    # saveRDS(change_ent, file = paste0(proj_dir, "ERC_simulation/data_application/model_fits/change_ent.RDS"))
   
-  saveRDS(linear_fit, file = paste0(out_dir, "linear.RDS"))
+  } 
   
-  # # Fit two gam models for now, one with cubic spline and one with beta spline (penalized)
-  gam_fit <-
-    mgcv::bam(log_mort ~ s(pm25_ensemble, bs = 'cr', k = 4) + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +as.factor(year) + as.factor(region) +
-                as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
-              data = data)
-  
-  saveRDS(gam_fit, file = paste0(out_dir, "gam.RDS"))
-  
-  # gam_fit_bs <- 
-  #   mgcv::bam(log_mort ~ s(pm25_ensemble, bs = 'bs', k = 20) + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +as.factor(year) + as.factor(region) + 
-  #        as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
-  #      data = data)
-  # 
-  # saveRDS(gam_fit_bs, file = paste0(proj_dir, "ERC_simulation/data_application/model_fits/gam_bs.RDS"))
-  # 
-  # 
-  # change_model <-
-  #   chngptm(log_mort ~ medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +
-  #             as.factor(year) + as.factor(region) + as.factor(sex) + as.factor(race) + as.factor(dual) + 
-  #             as.factor(entry_age_break) + as.factor(followup_year), ~ pm25_ensemble,
-  #           data = data, family = "gaussian", 
-  #           type = "segmented", var.type = "default")
-  # 
-  # saveRDS(change_model, file = paste0(proj_dir, "ERC_simulation/data_application/model_fits/change_model.RDS"))
-  
-  # Now fit the entropy based weights in your model 
-  source(paste0(proj_dir, "ERC_simulation/Simulation_studies/data_application/functions/entropy_wt_functions.R"))
+  # Remember this for fitting only causalGPS package
+  # data_ent <-
+  #   data[, c("medhouseholdincome", "medianhousevalue", "poverty", "education", "pct_owner_occ",
+  #            "year", "region", "sex", "race", "dual", "entry_age_break", "followup_year")]
   
   data_ent <-
-    data[, c("medhouseholdincome", "medianhousevalue", "poverty", "education",
-             "pct_owner_occ", "year", "region", "sex", "race", "dual", "entry_age_break", "followup_year")]
+    data[, c("medhouseholdincome", "medianhousevalue", "year", "poverty", "education",
+             "pct_owner_occ", "region", "sex", "race", "dual", "entry_age_break")]
   
-  # Create model matrx
-  data_ent_matrix <- model.matrix( ~ -1 + medhouseholdincome + medianhousevalue + poverty + education +
-                                    pct_owner_occ + year + region + sex + race + dual + entry_age_break + followup_year, 
-                                  data = data_ent)
+  # data_ent[, year := as.numeric(as.character(year))]
   
-  #c_mat <- scale(data_ent_matrix, scale = apply(data_ent_matrix, 2, function(x) 0.5*diff(range(x))))
-  #e <- ebal(data_ent$pm25_ensemble, c_mat)
+  # Now fit CausalGPS model
+  pseudo_pop <- 
+    generate_pseudo_pop(data$log_mort,
+                        data$pm25_ensemble,
+                        data.frame(data_ent),
+                        ci_appr = "matching",
+                        pred_model = "sl",
+                        gps_model = "parametric",
+                        use_cov_transform = TRUE,
+                        transformers = list("pow2", "pow3", "abs", "scale"),
+                        trim_quantiles = c(0, 1),
+                        optimized_compile = TRUE,
+                        sl_lib = c("m_xgboost"),
+                        params = list(xgb_nrounds = c(50),
+                                      xgb_eta = c(.3),
+                                      max_depth = c(6),
+                                      "xgb_min_child_weight" = 1),
+                        covar_bl_method = "absolute",
+                        covar_bl_trs = 0.1,
+                        covar_bl_trs_type = "mean",
+                        max_attempt = 1,
+                        matching_fun = "matching_l1",
+                        delta_n = 0.16,
+                        scale = 1,
+                        nthread = 40)
   
+  saveRDS(pseudo_pop, file = paste0(out_dir, "pseudo_pop.RDS"))
   
-  # First center non-binary variables 
-  # c_mat <- scale(data_ent_matrix,
-  #                center = apply(c_mat, 2, function(x) {
-  #                  ifelse(length(unique(x)) > 2, mean(x), 0)
-  #                }),
-  #                scale = FALSE)
-  
-  
-  # Now scale to be between -1 and 1
-  c_mat <- scale(data_ent_matrix,
-                 center = T,
-                 scale = apply(data_ent_matrix, 2, function(x) ifelse(max(abs(x)) == 0, 1, max(abs(x)))))
-  
-  #c_mat <- scale(data_ent_matrix, scale = apply(data_ent_matrix, 2, function(x) 0.5*diff(range(x))))
-  e <- ebal(data$pm25_ensemble, c_mat)
-  ent_weights <- e$weights
-  ent_weights[ent_weights > quantile(ent_weights, 0.995)] <- quantile(ent_weights, 0.995)
-  
-  # # Run through one more iteration to get rid of extreme weights
-  e <- ebal(data$pm25_ensemble, c_mat, base_weights = ent_weights)
-  ent_weights <- e$weights
-  ent_weights[ent_weights > quantile(ent_weights, 0.995)] <- quantile(ent_weights, 0.995)
-  
-  # Now save entropy weights and covariate weights
-  cov.wt(cbind(data$pm25_ensemble, c_mat), ent_weights, TRUE)$cor[, 1]
-  cov.wt(cbind(data$pm25_ensemble, data_ent_matrix), ent_weights, TRUE)$cor[, 1]
-  ent_dataset <- data.table(cbind(pm25_ensemble = data$pm25_ensemble, data_ent_matrix, ent_weights))
-  
-  # Save entropy weight output
-  saveRDS(ent_dataset, file = paste0(out_dir, "entropy_weights.RDS"))
-  saveRDS(ent_weights, file = paste0(out_dir, "entropy_weights_raw.RDS"))
-   
-  # Now fit the entropy based weights 
-  linear_ent <-
-    lm(log_mort ~ pm25_ensemble + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +
-         as.factor(year) + as.factor(region) +
-         as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
-       data = data, weights = ent_weights)
-  
-  saveRDS(linear_ent, file = paste0(out_dir, "linear_ent.RDS"))
-  
-  
-  # Fit two gam models for now, one with cubic spline and one with beta spline (penalized)
-  gam_ent <-
-    mgcv::bam(log_mort ~ s(pm25_ensemble, bs = 'cr', k = 4) + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +as.factor(year) + as.factor(region) +
-                as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
-              data = data, weights = ent_weights)
-  
-  saveRDS(gam_ent, file = paste0(out_dir, "/gam_ent.RDS"))
-  
-  
-  # gam_ent_bs <- 
-  #   mgcv::bam(log_mort ~ s(pm25_ensemble, bs = 'bs', k = 20) + medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +as.factor(year) + as.factor(region) + 
-  #               as.factor(sex) + as.factor(race) + as.factor(dual) + as.factor(entry_age_break) + as.factor(followup_year),
-  #             data = data, weights = ent_weights)
+  # pseudo_pop <- 
+  #   generate_pseudo_pop(data$log_mort,
+  #                       data$pm25_ensemble,
+  #                       data.frame(data_ent),
+  #                       ci_appr = "matching",
+  #                       pred_model = "sl",
+  #                       gps_model = "parametric",
+  #                       use_cov_transform = TRUE,
+  #                       transformers = list("pow2", "pow3", "abs", "scale"),
+  #                       trim_quantiles = c(0.025, 0.975),
+  #                       optimized_compile = TRUE,
+  #                       sl_lib = c("m_xgboost"),
+  #                       params = list(xgb_nrounds = c(10, 20, 50, 200),
+  #                                     xgb_eta = c(0.025, 0.05, 0.1, 0.2, 0.3),
+  #                                     max_depth = c(4, 5, 6)),
+  #                       covar_bl_method = "absolute",
+  #                       covar_bl_trs = 0.1,
+  #                       covar_bl_trs_type = "mean",
+  #                       max_attempt = 20,
+  #                       matching_fun = "matching_l1",
+  #                       delta_n = 0.16,
+  #                       scale = 1,
+  #                       nthread = 40)
   # 
-  # saveRDS(gam_ent_bs, file = paste0(proj_dir, "ERC_simulation/data_application/model_fits/gam_ent_bs.RDS"))
-  
-  # # USe MGCV bam instead of gam 
-  # change_ent <-
-  #   chngptm(log_mort ~ medhouseholdincome + medianhousevalue + poverty + education + pct_owner_occ +
-  #             as.factor(year) + as.factor(region) + as.factor(sex) + as.factor(race) + as.factor(dual) + 
-  #             as.factor(entry_age_break) + as.factor(followup_year), ~ pm25_ensemble,
-  #           data = data, family = "gaussian", 
-  #           type = "segmented", var.type = "default", weights = ent_weights)
   # 
-  # saveRDS(change_ent, file = paste0(proj_dir, "ERC_simulation/data_application/model_fits/change_ent.RDS"))
+  # saveRDS(pseudo_pop, file = paste0(out_dir, "pseudo_pop.RDS"))
+  
+  
+  #pseudo_pop <- readRDS(file = paste0(out_dir, "pseudo_pop.RDS"))
+  
+  # Now fit semi-parametric here 
+  #out_dir <- paste0(proj_dir, "ERC_simulation/Simulation_studies/data_application/model_fits/", model_flag, "/")
+  psuedo_pop_frame <- data.table(pseudo_pop$pseudo_pop)
+  
+  causal_gps <- 
+    mgcv::bam(formula = Y ~ s(w, bs = 'cr', k = 4),
+              family = "gaussian",
+              data = psuedo_pop_frame,
+              weights = counter_weight)
+  
+  # causal_gps2 <- 
+  #   mgcv::bam(formula = Y ~ s(w, bs = 'ps'),
+  #             family = "gaussian",
+  #             data = psuedo_pop_frame,
+  #             weights = counter_weight)
+  # 
+  # causal_gps3 <- 
+  #   mgcv::bam(formula = Y ~ s(w, bs = 'cr'),
+  #             family = "gaussian",
+  #             data = psuedo_pop_frame,
+  #             weights = counter_weight)
+  # 
+  # causal_gps4 <- 
+  #   mgcv::bam(formula = Y ~ s(w, bs = 'cr', k = 6),
+  #             family = "gaussian",
+  #             data = psuedo_pop_frame,
+  #             weights = counter_weight)
+  # 
+  # viz_fit1 <- mgcViz::getViz(causal_gps)
+  # viz_fit2 <- mgcViz::getViz(causal_gps4)
+  # 
+  # # Make plotGAM objects
+  # trt_fit1 <- plot(viz_fit1, allTerms = T) + l_fitLine()
+  # trt_fit2 <- plot(viz_fit2, allTerms = T) + l_fitLine()
+  # 
+  # exam_dat <- 
+  #   bind_rows(trt_fit1[["plots"]][[1]]$data$fit %>% mutate(fit = "Fit 1"), 
+  #             trt_fit2[["plots"]][[1]]$data$fit %>% mutate(fit = "Fit 2"))
+  # 
+  # 
+  # ggplot(data = exam_dat, aes(x = x, y = y, colour = fit)) +
+  #   geom_line() +
+  #   labs(x = "Examination", y = "s(Examination)") + 
+  #   theme_bw() +
+  #   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+  
+  
+  saveRDS(causal_gps, file = paste0(out_dir, "causal_fit.RDS"))
+  
+  message("Done with fitting models")
+}
+# load the models if doing post processing only
+linear_fit <- readRDS(file = paste0(out_dir, "linear.RDS"))
+gam_fit <- readRDS(file = paste0(out_dir, "gam.RDS"))
+linear_ent <- readRDS(file = paste0(out_dir, "linear_ent.RDS"))
+gam_ent <- readRDS(file = paste0(out_dir, "gam_ent.RDS"))
 
-} 
+# Load causal fit 
+pseudo_pop <- readRDS(file = paste0(out_dir, "pseudo_pop.RDS"))
+causal_gps <- readRDS(file = paste0(out_dir, "causal_fit.RDS"))
 
-# Remember this for fitting only causalGPS package
-# data_ent <-
-#   data[, c("medhouseholdincome", "medianhousevalue", "poverty", "education", "pct_owner_occ",
-#            "year", "region", "sex", "race", "dual", "entry_age_break", "followup_year")]
+# find min and max
+min_pm <- min(data$pm25_ensemble)
+max_pm <- max(data$pm25_ensemble)
 
-data_ent <-
-  data[, c("medhouseholdincome", "medianhousevalue", "year", "poverty", "education",
-           "pct_owner_occ", "region", "sex", "race", "dual", "entry_age_break")]
+data_prediction <- 
+  rbindlist(lapply(seq(min_pm, max_pm, length.out = 100), function(pot_exp) {
+    
+    potential_data <- mutate(data, pm25_ensemble = pot_exp)
+    
+    # Fit each model and take mean for ERC
+    potential_outcome <- 
+      potential_data %>% 
+      mutate(
+        linear_model = predict(linear_fit, potential_data, type = "response"),
+        gam_model = predict(gam_fit, newdata = potential_data, type = "response"),
+        #change_model = predict(change_model, newdata = potential_data, type = "response"),
+        linear_ent = predict(linear_ent, potential_data, type = "response"),
+        gam_ent = predict(gam_ent, newdata = potential_data, type = "response"),
+        #change_ent = predict(change_ent, newdata = potential_data, type = "response"),
+        causal_model =  predict(causal_gps, newdata = rename(potential_data, w = pm25_ensemble), type = "response")
+      ) %>% 
+      dplyr::select(pm25_ensemble, linear_model, linear_ent, gam_model, gam_ent, causal_model) %>% 
+      summarize_all(mean) %>% 
+      data.table()
+    return(potential_outcome)
+  }))
 
-# data_ent[, year := as.numeric(as.character(year))]
+saveRDS(data_prediction, file = paste0(out_dir, "data_prediction.RDS"))
 
-# Now fit CausalGPS model
-pseudo_pop <- 
-  generate_pseudo_pop(data$log_mort,
-                      data$pm25_ensemble,
-                      data.frame(data_ent),
-                      ci_appr = "matching",
-                      pred_model = "sl",
-                      gps_model = "parametric",
-                      use_cov_transform = TRUE,
-                      transformers = list("pow2", "pow3", "abs", "scale"),
-                      trim_quantiles = c(0, 1),
-                      optimized_compile = TRUE,
-                      sl_lib = c("m_xgboost"),
-                      params = list(xgb_nrounds = c(50),
-                                    xgb_eta = c(.3),
-                                    max_depth = c(6),
-                                    "xgb_min_child_weight" = 1),
-                      covar_bl_method = "absolute",
-                      covar_bl_trs = 0.5,
-                      covar_bl_trs_type = "mean",
-                      max_attempt = 1,
-                      matching_fun = "matching_l1",
-                      delta_n = 0.16,
-                      scale = 1,
-                      nthread = 40)
+model_types <- c("linear_model", "gam_model", "linear_ent", "gam_ent", "causal_model")
 
-saveRDS(pseudo_pop, file = paste0(out_dir, "pseudo_pop.RDS"))
+data_prediction <- readRDS(file = paste0(out_dir, "data_prediction.RDS"))
 
-# Now create year in entropy weights
-data_ent[, year := as.numeric(as.character((year)))]
+mortality_data <- 
+  data_prediction %>% 
+  pivot_longer(c(all_of(model_types)), names_to = "model", values_to = "prediction") %>%
+  arrange(pm25_ensemble) %>% 
+  mutate(prediction = exp(prediction))
 
-pseudo_pop <- 
-  generate_pseudo_pop(data$log_mort,
-                      data$pm25_ensemble,
-                      data.frame(data_ent),
-                      ci_appr = "matching",
-                      pred_model = "sl",
-                      gps_model = "parametric",
-                      use_cov_transform = TRUE,
-                      transformers = list("pow2", "pow3", "abs", "scale"),
-                      trim_quantiles = c(0.01, 0.99),
-                      optimized_compile = TRUE,
-                      sl_lib = c("m_xgboost"),
-                      params = list(xgb_nrounds = c(50),
-                                    xgb_eta = c(.3),
-                                    max_depth = c(6),
-                                    "xgb_min_child_weight" = 1),
-                      covar_bl_method = "absolute",
-                      covar_bl_trs = 0.3,
-                      covar_bl_trs_type = "mean",
-                      max_attempt = 1,
-                      matching_fun = "matching_l1",
-                      delta_n = 0.16,
-                      scale = 1,
-                      nthread = 40)
+saveRDS(mortality_data, file = paste0(out_dir, "mortality_data.RDS"))
 
-saveRDS(pseudo_pop, file = paste0(out_dir, "pseudo_pop2.RDS"))
+mortality_plot <- 
+  mortality_data %>%
+  ggplot(aes(x = pm25_ensemble, y = prediction, color = model, linetype = model)) +
+  geom_line() +
+  labs(x = "Exposure concentration", y = "Mortality rate")
 
-# Now run again with defaults
-pseudo_pop <- 
-  generate_pseudo_pop(data$log_mort,
-                      data$pm25_ensemble,
-                      data.frame(data_ent),
-                      ci_appr = "matching",
-                      pred_model = "sl",
-                      gps_model = "parametric",
-                      use_cov_transform = TRUE,
-                      transformers = list("pow2", "pow3", "abs", "scale"),
-                      trim_quantiles = c(0.025, 0.975),
-                      optimized_compile = TRUE,
-                      sl_lib = c("m_xgboost"),
-                      params = list(xgb_nrounds = c(10, 20, 50, 200),
-                                    xgb_eta = c(0.025, 0.05, 0.1, 0.2, 0.3),
-                                    max_depth = c(4, 5, 6)),
-                      covar_bl_method = "absolute",
-                      covar_bl_trs = 0.1,
-                      covar_bl_trs_type = "mean",
-                      max_attempt = 20,
-                      matching_fun = "matching_l1",
-                      delta_n = 0.16,
-                      scale = 1,
-                      nthread = 40)
-
-
-saveRDS(pseudo_pop, file = paste0(out_dir, "pseudo_pop3.RDS"))
-
-# Now run with trimmed
-pseudo_pop <- 
-  generate_pseudo_pop(data$log_mort,
-                      data$pm25_ensemble,
-                      data.frame(data_ent),
-                      ci_appr = "matching",
-                      pred_model = "sl",
-                      gps_model = "parametric",
-                      use_cov_transform = TRUE,
-                      transformers = list("pow2", "pow3", "abs", "scale"),
-                      trim_quantiles = c(0.01, 0.99),
-                      optimized_compile = TRUE,
-                      sl_lib = c("m_xgboost"),
-                      params = list(xgb_nrounds = c(10, 20, 50, 200),
-                                    xgb_eta = c(0.025, 0.05, 0.1, 0.2, 0.3),
-                                    max_depth = c(4, 5, 6)),
-                      covar_bl_method = "absolute",
-                      covar_bl_trs = 0.1,
-                      covar_bl_trs_type = "mean",
-                      max_attempt = 20,
-                      matching_fun = "matching_l1",
-                      delta_n = 0.16,
-                      scale = 1,
-                      nthread = 40)
+ggsave(mortality_plot, file = paste0(out_dir, "mortality_plot.pdf"))
 
 
-saveRDS(pseudo_pop, file = paste0(out_dir, "pseudo_pop4.RDS"))
+relative_rate_data <- 
+  data_prediction %>% 
+  mutate(linear_model = linear_model - data_prediction$linear_model[1]) %>%
+  mutate(linear_ent = linear_ent - data_prediction$linear_ent[1]) %>%
+  mutate(gam_model = gam_model - data_prediction$gam_model[1]) %>%
+  mutate(gam_ent = gam_ent - data_prediction$gam_ent[1]) %>%
+  mutate(causal_model = causal_model - data_prediction$causal_model[1]) %>%
+  pivot_longer(c(all_of(model_types)), names_to = "model", values_to = "prediction") %>%
+  arrange(pm25_ensemble) %>%
+  mutate(prediction = exp(prediction))
 
-# Now turn into factor again
-data_ent[, year := as.factor(year)]
+saveRDS(relative_rate_data, file = paste0(out_dir, "relative_rate.RDS"))
 
-pseudo_pop <- 
-  generate_pseudo_pop(data$log_mort,
-                      data$pm25_ensemble,
-                      data.frame(data_ent),
-                      ci_appr = "matching",
-                      pred_model = "sl",
-                      gps_model = "parametric",
-                      use_cov_transform = TRUE,
-                      transformers = list("pow2", "pow3", "abs", "scale"),
-                      trim_quantiles = c(0.025, 0.975),
-                      optimized_compile = TRUE,
-                      sl_lib = c("m_xgboost"),
-                      params = list(xgb_nrounds = c(10, 20, 50, 200),
-                                    xgb_eta = c(0.025, 0.05, 0.1, 0.2, 0.3),
-                                    max_depth = c(4, 5, 6)),
-                      covar_bl_method = "absolute",
-                      covar_bl_trs = 0.1,
-                      covar_bl_trs_type = "mean",
-                      max_attempt = 20,
-                      matching_fun = "matching_l1",
-                      delta_n = 0.16,
-                      scale = 1,
-                      nthread = 40)
+relative_rate_plot <-
+  relative_rate_data %>%
+  ggplot(aes(x = pm25_ensemble, y = exp(prediction), color = model, linetype = model)) +
+  geom_line() +
+  labs(x = "Exposure concentration", y = "Relative mortality rate")
 
+ggsave(relative_rate_plot, file = paste0(out_dir, "relative_rate_plot.pdf"))
 
-saveRDS(pseudo_pop, file = paste0(out_dir, "pseudo_pop5.RDS"))
+# Plot the contrasts
+contrasts <- c(8, 9, 10, 12)
 
-# Different trim
-pseudo_pop <- 
-  generate_pseudo_pop(data$log_mort,
-                      data$pm25_ensemble,
-                      data.frame(data_ent),
-                      ci_appr = "matching",
-                      pred_model = "sl",
-                      gps_model = "parametric",
-                      use_cov_transform = TRUE,
-                      transformers = list("pow2", "pow3", "abs", "scale"),
-                      trim_quantiles = c(0.01, 0.99),
-                      optimized_compile = TRUE,
-                      sl_lib = c("m_xgboost"),
-                      params = list(xgb_nrounds = c(10, 20, 50, 200),
-                                    xgb_eta = c(0.025, 0.05, 0.1, 0.2, 0.3),
-                                    max_depth = c(4, 5, 6)),
-                      covar_bl_method = "absolute",
-                      covar_bl_trs = 0.1,
-                      covar_bl_trs_type = "mean",
-                      max_attempt = 20,
-                      matching_fun = "matching_l1",
-                      delta_n = 0.16,
-                      scale = 1,
-                      nthread = 40)
+contrast_prediction <- 
+  rbindlist(lapply(contrasts, function(pot_exp) {
+    
+    potential_data <- mutate(data, pm25_ensemble = pot_exp)
+    
+    # Fit each model and take mean for ERC
+    potential_outcome <- 
+      potential_data %>% 
+      mutate(
+        linear_model = predict(linear_fit, potential_data, type = "response"),
+        gam_model = predict(gam_fit, newdata = potential_data, type = "response"),
+        #change_model = predict(change_model, newdata = potential_data, type = "response"),
+        linear_ent = predict(linear_ent, potential_data, type = "response"),
+        gam_ent = predict(gam_ent, newdata = potential_data, type = "response"),
+        #change_ent = predict(change_ent, newdata = potential_data, type = "response"),
+        causal_model =  predict(causal_gps, newdata = rename(potential_data, w = pm25_ensemble), type = "response")
+      ) %>% 
+      dplyr::select(pm25_ensemble, linear_model, linear_ent, gam_model, gam_ent, causal_model) %>% 
+      summarize_all(mean) %>% 
+      data.table()
+    return(potential_outcome)
+  }))
 
 
-saveRDS(pseudo_pop, file = paste0(out_dir, "pseudo_pop6.RDS"))
+contrast8_12 <- 
+  1 - exp(contrast_prediction[pm25_ensemble == 8] - contrast_prediction[pm25_ensemble == 12]) %>%
+  select(!!model_types)
 
-#pseudo_pop <- readRDS(file = paste0(out_dir, "pseudo_pop.RDS"))
+contrast9_12 <- 
+  1 - exp(contrast_prediction[pm25_ensemble == 9] - contrast_prediction[pm25_ensemble == 12]) %>%
+  select(!!model_types)
 
-# Now fit semi-parametric here 
-#out_dir <- paste0(proj_dir, "ERC_simulation/Simulation_studies/data_application/model_fits/", model_flag, "/")
-psuedo_pop_frame <- data.table(pseudo_pop$pseudo_pop)
+contrast10_12 <- 
+  1 - exp(contrast_prediction[pm25_ensemble == 10] - contrast_prediction[pm25_ensemble == 12]) %>%
+  select(!!model_types)
 
-causal_gps <- 
-  mgcv::bam(formula = Y ~ s(w, bs = 'cr', k = 4),
-            family = "gaussian",
-            data = psuedo_pop_frame,
-            weights = counter_weight)
+contrast_12 <- 
+  contrast_prediction[pm25_ensemble == 12]  %>%
+  select(!!model_types)
 
-saveRDS(causal_gps, file = paste0(out_dir, "causal_fit.RDS"))
+# Bind together and save
+contrast_data <- 
+  rbind(contrast8_12, contrast9_12, contrast10_12) %>% 
+  cbind(contrast = c(8, 9, 10, 12)) %>% 
+  data.table() 
 
-message("Done with fitting models")
+saveRDS(contrast_data, file = paste0(out_dir, "contrast_data.RDS"))
 
 # Add some processing to the data, do I want to run on age-adjusted mortality rate? Or log of mortality rate?
 

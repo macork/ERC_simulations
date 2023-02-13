@@ -9,7 +9,7 @@ library(Rcpp)
 library(RcppEigen)
 library("CausalGPS", lib.loc = "/n/home_fasse/mcork/apps/ERC_simulation/R_4.0.5")
 
-input_flag <- "boot_run"
+input_flag <- "adjust_quantile"
 
 # load in data
 proj_dir <- "/n/dominici_nsaph_l3/Lab/projects/"
@@ -58,9 +58,9 @@ data <- data[, .(dead = sum(dead), time_count = sum(time_count)), by = group_col
 #data <- aggregate_data[sample(.N, 1000)]
 data[, mort_rate := dead / time_count]
 
-# now trim upper and lower quantiles
-lower_pm <- quantile(data$pm25_ensemble, 0.01)
-upper_pm <- quantile(data$pm25_ensemble, 0.99)
+# now trim upper and lower quantiles for data analysis
+lower_pm <- quantile(data$pm25_ensemble, 0.025)
+upper_pm <- quantile(data$pm25_ensemble, 0.975)
 
 data <-
   data %>%
@@ -86,6 +86,8 @@ data[, sex := as.factor(sex - 1)]
 data[, race := as.factor(race)]
 data[, entry_age_break := as.factor(entry_age_break)]
 data[, dual := as.factor(dual)]
+data[, year := factor(year)]
+data[, followup_year := factor(followup_year)]
 
 # histogram of mortality rate
 data_hist <- 

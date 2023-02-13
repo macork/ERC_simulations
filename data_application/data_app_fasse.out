@@ -1,0 +1,1 @@
+/n/helmod/apps/centos7/Comp/gcc/9.3.0-fasrc01/R_core/4.0.5-fasrc02/lib64/R/bin/BATCH: line 60: 214029 Killed                  ${R_HOME}/bin/R -f ${in} ${opts} ${R_BATCH_OPTIONS} > ${out} 2>&1
