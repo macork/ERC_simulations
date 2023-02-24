@@ -16,7 +16,7 @@ library(RcppEigen)
 args <- commandArgs(T)
 input_flag <- as.character(args[[1]])
 model_flag = as.character(args[[2]])
-only_causalgps = F
+only_causalgps = T
 only_post = F
 
 # load in data
@@ -395,7 +395,7 @@ contrast_12 <-
 
 # Bind together and save
 contrast_data <- 
-  rbind(contrast8_12, contrast9_12, contrast10_12) %>% 
+  rbind(contrast8_12, contrast9_12, contrast10_12, contrast_12) %>% 
   cbind(contrast = c(8, 9, 10, 12)) %>% 
   data.table() 
 
