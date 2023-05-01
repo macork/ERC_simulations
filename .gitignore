@@ -9,3 +9,4 @@ data/
 results/**/**/sim_final*
 Logs/
 results/
+data_application/model_fits/
