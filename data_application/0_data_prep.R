@@ -1,4 +1,5 @@
 # Code to prep data for model fitting (only need to run once for each new decision)
+rm(list = ls())
 library(data.table)
 library(tidyverse)
 library(chngpt)
@@ -9,62 +10,72 @@ library(Rcpp)
 library(RcppEigen)
 library("CausalGPS", lib.loc = "/n/home_fasse/mcork/apps/ERC_simulation/R_4.0.5")
 
-input_flag <- "adjust_quantile"
+input_flag <- "kevin_trim_90"
 
 # load in data
 proj_dir <- "/n/dominici_nsaph_l3/Lab/projects/"
 out_dir <- paste0(proj_dir, "ERC_simulation/Medicare_data/model_input/", input_flag, "/")
 dir.create(out_dir)
 
-data <- readRDS(paste0(proj_dir, "analytic/aggregated_2000-2016_medicare_mortality_pm25_zip/aggregate_data.RDS"))
+# Work with KEvin's dataset
+#load(file = "~/shared_space/ci3_analysis/josey_erc_strata/Data/aggregate_data_rm.RData")
+
+#data <- readRDS(paste0(proj_dir, "analytic/aggregated_2000-2016_medicare_mortality_pm25_zip/aggregate_data.RDS"))
+
+load("/n/dominici_nsaph_l3/Lab/projects/analytic/erc_strata/aggregate_data.RData")
+
+data <- data.table(aggregate_data)
 
 #data_test <- sample_n(data, 5000)
 # Aggregate age groups and races 
 # Only include, white, black, hispanic, other 
 #data[, race := ifelse(race == 0, race = 1, race)]
 
-# Aggreate age ranges to 10 year ranges
-# 1 is 65-74
-data[, entry_age_break := ifelse(entry_age_break == 2, 1, entry_age_break)] 
-# 3 is 75-84
-data[, entry_age_break := ifelse(entry_age_break == 4, 3, entry_age_break)]
-# 5 is 85-94
-data[, entry_age_break := ifelse(entry_age_break == 6, 5, entry_age_break)]
-# 7 is 95 plus
-data[, entry_age_break := ifelse(entry_age_break == 8, 7, entry_age_break)]
+# # Aggreate age ranges to 10 year ranges
+# # 1 is 65-74
+# data[, entry_age_break := ifelse(entry_age_break == 2, 1, entry_age_break)] 
+# # 3 is 75-84
+# data[, entry_age_break := ifelse(entry_age_break == 4, 3, entry_age_break)]
+# # 5 is 85-94
+# data[, entry_age_break := ifelse(entry_age_break == 6, 5, entry_age_break)]
+# # 7 is 95 plus
+# data[, entry_age_break := ifelse(entry_age_break == 8, 7, entry_age_break)]
 
 # See percent of age in each category
 count(data, entry_age_break) %>% mutate(n = n / sum(n))
 
-# Now aggregate over races (removing unknown race)
-data <- 
-  data %>% 
-  filter(race != 0) %>% 
-  mutate(race = ifelse(race == 6, 3, race))
+# # Now aggregate over races (removing unknown race)
+# data <- 
+#   data %>% 
+#   filter(race != 0) %>% 
+#   mutate(race = ifelse(race == 6, 3, race))
 
 # See percent of each race in category
 count(data, race) %>% mutate(n = n / sum(n))
 
 # now aggregate over age, sex, dual, zip code, year
-group_cols <- setdiff(names(data), c("dead", "time_count"))
+#group_cols <- setdiff(names(data), c("dead", "time_count"))
 
 #data1 <- data %>% select(-dead, -time_count, -followup_year) %>% data.table()
 
 # Collapse over these values in data table to save time
-data <- data[, .(dead = sum(dead), time_count = sum(time_count)), by = group_cols]
+#data <- data[, .(dead = sum(dead), time_count = sum(time_count)), by = group_cols]
 
 # Find minimum 
 # Now perform some functions of the data as a data exploration
 #data <- aggregate_data[sample(.N, 1000)]
 data[, mort_rate := dead / time_count]
 
-# now trim upper and lower quantiles for data analysis
-lower_pm <- quantile(data$pm25_ensemble, 0.025)
-upper_pm <- quantile(data$pm25_ensemble, 0.975)
+# now trim upper and lower quantiles for data analysis ()
+data_trim <- data %>% select(all_of(c("zip", "pm25", "year"))) %>% unique()
+
+lower_pm <- quantile(data_trim$pm25, 0.05)
+upper_pm <- quantile(data_trim$pm25, 0.95)
+
 
 data <-
   data %>%
-  filter(between(pm25_ensemble, lower_pm, upper_pm)) %>%
+  filter(between(pm25, lower_pm, upper_pm)) %>%
   data.table()
 
 # # Create weighted percentile by the number of counts
@@ -77,12 +88,12 @@ data <-
 # wtd_upper <- data1 %>% filter(wtd_ptile >= .975) %>% slice_head()
 
 # Display minimum and maximum
-min(data$pm25_ensemble)
-max(data$pm25_ensemble)
+min(data$pm25)
+max(data$pm25)
 
 # Make sure data is stored in correct form 
 data[, region := as.factor(region)]
-data[, sex := as.factor(sex - 1)]
+# data[, sex := as.factor(sex - 1)]
 data[, race := as.factor(race)]
 data[, entry_age_break := as.factor(entry_age_break)]
 data[, dual := as.factor(dual)]
@@ -106,7 +117,7 @@ ggsave(data_hist, file = paste0(out_dir, "/hist_mortality.pdf"))
 gg_pm <- 
   data %>%
   ggplot() + 
-  geom_histogram(aes(x = pm25_ensemble)) + 
+  geom_histogram(aes(x = pm25)) + 
   labs(x = "PM concentration") + 
   theme_bw()
 
@@ -134,8 +145,9 @@ ggsave(gg_log_mort, file = paste0(out_dir, "/log_mort.pdf"))
 # Save input data to model folder (make sure not pushed to github)
 saveRDS(data, file = paste0(out_dir, "/input_data.RDS"))
 
-# Now create m out of n dataset for uncertainty quantification
-n <- nrow(data)
+# Now create m out of n dataset for uncertainty quantification (block is at the zip code level)
+zip_codes <- unique(data$zip)
+n <- length(zip_codes)
 m <- round(n / log(n))
 
 dir.create(paste0(out_dir, "/boostrap/"))
@@ -143,7 +155,8 @@ dir.create(paste0(out_dir, "/boostrap/"))
 # Save 100 datasets for bootstrap, will later be used
 lapply(1:100, function(i) {
   set.seed(i)
-  resampled_data <- data[sample(.N, m)]
+  resample_zip_codes = sample(zip_codes, m, replace = T) # Sample zip with replacement
+  resampled_data <- data[zip %in% resample_zip_codes] # save those zip codes
   saveRDS(resampled_data, file = paste0(out_dir, "/boostrap/boot_data_", i, ".RDS"))
 })
 
