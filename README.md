@@ -27,4 +27,4 @@ Code related to fitting model to Medicare database is found in data_application
 * `/functions/` contains two functions used for data application:
   * `/functions/entropy_wt_functions.R` is a more efficient implementation of entropy weighting for a large dataset
   * `/functions/fit_causalGPS_by_year.R` fits the CausalGPS package by year for Medicare dataset
-* `bash*.sh` all these scripts are used to launch jobs on the FASSE cluster 
+* `bash_*.sh` all these scripts are used to launch jobs on the FASSE cluster 

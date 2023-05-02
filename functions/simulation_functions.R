@@ -1,7 +1,14 @@
-# File that contains all the functions I am using for the simulation 
+# Code used for simulation functions
 
+# Function to generate data
 data_generate_a <-
-  function(sample_size = 1000, exposure = NA, confounders = NA, exposure_relationship = NA, outcome_relationship = NA, family = NA, outcome_sd = 10) {
+  function(sample_size = 1000, 
+           exposure = NA, 
+           confounders = NA, 
+           exposure_relationship = NA, 
+           outcome_relationship = NA, 
+           family = NA, 
+           outcome_sd = 10) {
     
     # Abbreviate for clarity 
     cf <- confounders
@@ -61,23 +68,29 @@ data_generate_a <-
 
 # Define function for simulations
 # adjust_confounder says if we should adjust for confounders at all in our model
-metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", outcome_relationship = "linear", sample_size = 1000, confounders = NA,
-                              family = "gaussian", eschif_draws = NULL, adjust_confounder = T, causal_gps = F) {
-  
-  
-  # exposure_relationship = "threshold"
-  # outcome_relationship = "interaction"
-  #  family = "gaussian"
-  #  adjust_confounder = T
+metrics_from_data <- function(exposure = NA, 
+                              exposure_relationship = "linear", # Underlying ERC
+                              outcome_relationship = "linear", #linear or interaction
+                              sample_size = 1000, 
+                              confounders = NA,
+                              family = "gaussian", # Family of simulation (poisson or gaussian)
+                              eschif_draws = NULL, # Should eSCHIF be used in model run
+                              adjust_confounder = T, # Should confounders be included in outcome model
+                              causal_gps = F) {
   
   # Simulate data
-  data_example <- data_generate_a(sample_size = sample_size, exposure = exposure, confounders = confounders, 
-                                  exposure_relationship = exposure_relationship, outcome_relationship = outcome_relationship,
+  data_example <- data_generate_a(sample_size = sample_size, 
+                                  exposure = exposure, 
+                                  confounders = confounders, 
+                                  exposure_relationship = exposure_relationship, 
+                                  outcome_relationship = outcome_relationship,
                                   family = family)
   
   # Now fit a linear model
   if (adjust_confounder == T) {
-    linear_fit <- glm(Y ~ exposure + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, family = family)
+    linear_fit <- glm(Y ~ exposure + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, 
+                      data = data_example, 
+                      family = family)
   } else {
     linear_fit <- glm(Y ~ exposure, data = data_example, family = family)
   }
@@ -85,112 +98,68 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
   # Now fit a GAM model 
   if (adjust_confounder == T) {
     #gam_fit <- mgcv::gam(Y ~ s(exposure) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, family = family)
-    gam_fit <- gam::gam(Y ~ s(exposure, df = 3) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, family = family)
+    gam_fit <- mgcv::gam(Y ~ s(exposure, bs = 'cr', k = 4) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6,
+                        data = data_example, family = family)
   } else {
-    gam_fit <- gam::gam(Y ~ s(exposure, df = 3), data = data_example, family = family)
+    gam_fit <- gam::gam(Y ~ s(exposure, bs = 'cr', k = 4), data = data_example, family = family)
   }
   
   # Now fit the causal model with weight by GPS
     
     # Create dataset for GPS estimation
     data_gps <- dplyr::select(data_example, -Y)
-    
-    # # Linear GPS model
-    # GPS_mod <- lm(exposure ~ ., data = data_gps)
-    # # Create stabilized ipw weight from linear GPS
-    # ipw <- dnorm(data_gps$exposure, mean = mean(data_gps$exposure), sd = sd(data_gps$exposure)) / dnorm(data_gps$exposure, predict(GPS_mod, data_gps), sqrt(mean(resid(GPS_mod)^2)))
-    # data_gps$IPW <- ipw
   
     # Generate weights using entropy balancing weights 
     W1 <- weightit(exposure ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_gps, method = "ebal", stabilize = T)
-    data_gps$IPW <- W1$weights
-    
-    
-    # Train Xgboost for predicting exposure (not done for now)
-    # if (causal_gps) {
-    #   # The following lines are using caret but I am going down to two options: "default" and "tuned" which is the lowest average correlation
-    #   tune_control <-
-    #     caret::trainControl(method = "cv",
-    #                         number = 5,
-    #                         verboseIter = FALSE,
-    #                         allowParallel = TRUE)
-    #   nrounds <- 700
-    #   tune_grid <- expand.grid(nrounds = seq(from = 400, to = nrounds, by = 50),
-    #                            eta = c(0.025, 0.05, 0.1),
-    #                            max_depth = c(2, 3),
-    #                            gamma = 0,
-    #                            colsample_bytree = 1,
-    #                            min_child_weight = c(1),
-    #                            subsample = 1)
-    #   xgbt_model <-
-    #     train(exposure ~ ., data = data_gps, method = "xgbTree",
-    #           trControl = tune_control, tuneGrid = tune_grid, verbosity = 0)
-    # 
-    #   xgbt_model$bestTune
-    #   
-    #   predVals <- extractPrediction(list(xgbt_model))
-    #   plotObsVsPred(predVals)
-    #   
-    #   ipw <- dnorm(data_gps$exposure, mean(data_gps$exposure), sd(data_gps$exposure)) / dnorm(data_gps$exposure, predVals$pred, sqrt(mean(resid(xgbt_model)^2)))
-    #   data_gps$IPW <- ipw
-    # }
-
+    data_gps$ent <- W1$weight
     
     # Truncate the 99th percentile (could also truncate to 10 as Xiao did in his paper)
-    upper_bound = quantile(data_gps$IPW, 0.99)
-    # lower_bound = quantile(data_gps$IPW, 0.01)
+    upper_bound = quantile(data_gps$ent, 0.995)
+    data_gps[ent > upper_bound, ent := upper_bound]
     
-    # Truncating above 10 now (following Xiao advice)
-    data_gps[IPW > 10, IPW := 10]
+    data_ent <- 
+      data_example %>% 
+      left_join(data_gps, by = c("exposure", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6"))
     
-    data_ipw <- data_example %>% left_join(data_gps, by = c("exposure", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6"))
-    #data_ipw = filter(data_example, between(IPW, lower_bound, upper_bound))
-    
-    # Make correlation table.... might be difficult 
-    
-    post_cor <- cov.wt(data_ipw[, c("exposure", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6")], wt = (data_ipw$IPW), cor = T)$cor
+    # Make correlation table
+    post_cor <- cov.wt(data_ent[, c("exposure", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6")], wt = (data_ent$ent), cor = T)$cor
     post_cor <- abs(post_cor[-1, 1])
     
-    pre_cor <- cov.wt(data_ipw[, c("exposure", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6")], cor = T)$cor
+    pre_cor <- cov.wt(data_ent[, c("exposure", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6")], cor = T)$cor
     pre_cor <- abs(pre_cor[-1, 1])
     
     correlation_table <- data.table(covariate = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6"), pre_cor = pre_cor, post_cor = post_cor)
-    
-    # correlation_table <- 
-    #     rbindlist(lapply(names(data.frame(confounders)), function(cov){
-    #       pre_cor <- abs(cor(data_ipw$exposure, data_ipw[[cov]]))
-    #       post_cor <- abs(wtd.cor(data_ipw$exposure, data_ipw[[cov]], data_ipw$IPW))
-    #       data.table(covariate = cov, pre_cor = pre_cor, post_cor = post_cor[1])
-    #     }))
     
     
     # Now fit using CausalGPS package --------------------------
     if (causal_gps) {
       # First fit using default settings for our simulation
-      pseudo_pop_default <- generate_pseudo_pop(data_ipw$Y,
-                                        data_ipw$exposure,
-                                        data.frame(data_ipw[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")]),
-                                        ci_appr = "matching",
-                                        pred_model = "sl",
-                                        gps_model = "parametric",
-                                        use_cov_transform = TRUE,
-                                        transformers = list("pow2", "pow3", "abs", "scale"),
-                                        trim_quantiles = c(0.025,0.975),
-                                        optimized_compile = TRUE,
-                                        sl_lib = c("m_xgboost"),
-                                        covar_bl_method = "absolute",
-                                        covar_bl_trs = 0.1,
-                                        covar_bl_trs_type = "mean",
-                                        max_attempt = 20,
-                                        matching_fun = "matching_l1",
-                                        delta_n = 1.0,
-                                        scale = 1,
-                                        nthread = 2)
+      pseudo_pop_default <- generate_pseudo_pop(data_ent$Y,
+                                                data_ent$exposure,
+                                                data.frame(data_ent[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")]),
+                                                ci_appr = "matching",
+                                                pred_model = "sl",
+                                                gps_model = "parametric",
+                                                use_cov_transform = TRUE,
+                                                transformers = list("pow2", "pow3", "abs", "scale"),
+                                                trim_quantiles = c(0, 1),
+                                                optimized_compile = TRUE,
+                                                sl_lib = c("m_xgboost"),
+                                                covar_bl_method = "absolute",
+                                                covar_bl_trs = 0.1,
+                                                covar_bl_trs_type = "mean",
+                                                max_attempt = 1,
+                                                matching_fun = "matching_l1",
+                                                delta_n = 1.0,
+                                                scale = 1,
+                                                nthread = 2)
       
       # Now fit semi-parametric here 
-      causal_gps_default <- gam::gam(formula = Y ~ s(w, df = 3),
-                             family = "gaussian", data = data.frame(pseudo_pop_default$pseudo_pop), 
-                             weights = counter)
+      causal_gps_default <- 
+        mgcv::gam(formula = Y ~ s(w, bs = 'cr', k = 4) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6,
+                  family = "gaussian",
+                  data = data.frame(pseudo_pop_default$pseudo_pop),
+                  weights = counter_weight)
       
       # Now fit most optimized causal pathway
       # Set grid to tune over 
@@ -207,15 +176,15 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
       
       # Wrapper function for running causalGPS
       wrapper_func <- function(tune_grid){
-        pseudo_pop <- generate_pseudo_pop(data_ipw$Y,
-                                          data_ipw$exposure,
-                                          data.frame(data_ipw[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")]),
+        pseudo_pop <- generate_pseudo_pop(data_ent$Y,
+                                          data_ent$exposure,
+                                          data.frame(data_ent[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")]),
                                           ci_appr = "matching",
                                           pred_model = "sl",
                                           gps_model = "parametric",
                                           use_cov_transform = FALSE,
                                           transformers = list("pow2", "pow3", "abs", "scale"),
-                                          trim_quantiles = c(0.025,0.975),
+                                          trim_quantiles = c(0,1),
                                           optimized_compile = T,
                                           sl_lib = c("m_xgboost"),
                                           params = list(xgb_rounds = tune_grid[[1]],
@@ -231,77 +200,73 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
                                           nthread = 2)
         
         
+        matched_pop <- pseudo_pop$pseudo_pop
+        # Truncate upper 1%
+        matched_pop[counter_weight > quantile(matched_pop$counter_weight, 0.99),
+                    counter_weight := quantile(matched_pop$counter_weight, 0.99)]
+        
+        # Now generate covariate balance tab
+        balance_table <- 
+          bal.tab(w ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6,
+                  data = matched_pop,
+                  weights = matched_pop[["counter_weight"]],
+                  method = "weighting",
+                  stats = c("cor"),
+                  un = T,
+                  continuous = "std",
+                  s.d.denom = "weighted",
+                  abs = T,
+                  thresholds = c(cor = .1), poly = 1)
+        
+        mean_post_cor <- mean(balance_table$Balance$Corr.Adj)
+        
         results <- 
           data.frame(nrounds = tune_grid[[1]], 
                      eta = tune_grid[[2]],
                      max_depth = tune_grid[[3]],
                      delta = tune_grid[[4]],
                      scale = 1,
-                     mean_corr = pseudo_pop$adjusted_corr_results$mean_absolute_corr,
-                     max_corr = pseudo_pop$adjusted_corr_results$maximal_absolute_corr)
+                     mean_corr = mean_post_cor,
+                     max_corr = max(balance_table$Balance$Corr.Adj))
         return(list(results, pseudo_pop))
         
       }
       
-      # Run these wrapper functions in parallel
-      # Consider running optimized vs non optimized version through simulations? Could try to get that working today 
-      
-      # currently not running parallel so commenting this out 
-      # cl <- parallel::makeCluster(10, type="PSOCK")
-      # parallel::clusterExport(cl=cl,
-      #                         varlist = c("generate_pseudo_pop",
-      #                                     "wrapper_func",
-      #                                     "data_ipw"
-      #                         ),
-      #                         envir=environment())
-      # 
-      # pseudo_pop_list  <- parallel::parLapply(cl,tune_grid_list, wrapper_func)
-      # parallel::stopCluster(cl)
-      
+      # Now iterate through simulation function, bind together results
       pseudo_pop_list <- lapply(tune_grid_list, wrapper_func)
-      
-      # If you don't want to run in parallel, use this 
-      #pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 4, wrapper_func)
       corr_search <- do.call("rbind", (lapply(pseudo_pop_list, function(x) x[[1]])))
       
       # Extract minimum as your result
       pseudo_pop_tuned <- pseudo_pop_list[[which.min(corr_search$mean_corr)]][[2]]
       
       # Now fit semi-parametric here 
-      causal_gps_tuned <- gam::gam(formula = Y ~ s(w, df = 3), family = "gaussian", data = data.frame(pseudo_pop_tuned$pseudo_pop), weights = counter)
-      
+      causal_gps_tuned <- 
+        mgcv::gam(formula = Y ~ s(w, bs = 'cr', k = 4) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6,
+                  family = "gaussian",
+                  data = data.frame(pseudo_pop_tuned$pseudo_pop),
+                  weights = counter_weight)
     }
     
     # Dropping these models now 
     if (adjust_confounder) {
-      propensity_lm <- glm(Y ~ exposure + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_ipw, family = family, weights = IPW)
-      propensity_gam <- gam::gam(Y ~ s(exposure, df = 3) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_ipw, family = family, weights = IPW)
-      
-      # Fit an oracle model 
-      
-      
+      propensity_lm <- glm(Y ~ exposure + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, 
+                           data = data_ent, family = family, weights = ent)
+      propensity_gam <- mgcv::gam(Y ~ s(exposure, bs = 'cr', k = 4) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_ent, family = family, weights = ent)
     } else {
-      propensity_lm <- glm(Y ~ exposure, data = data_ipw, family = family, weights = IPW)
-      propensity_gam <- gam::gam(Y ~ s(exposure, df = 3), data = data_ipw, family = family, weights = IPW)
+      propensity_lm <- glm(Y ~ exposure, data = data_ent, family = family, weights = ent)
+      propensity_gam <- gam::gam(Y ~ s(exposure, df = 3), data = data_ent, family = family, weights = ent)
     }
-    
-    # Propensity gam being supressed for now (not sure if this is correct formulation)
-    #propensity_gam <- gam::gam(Y ~ s(exposure, df = 3) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_ipw, family = family, weights = IPW)
-    #propensity_gam_nocf <- mgcv::gam(Y ~ s(exposure), data = data_ipw, family = family, weights = IPW)
     
     # Now fit threshold model 
     if (adjust_confounder) {
-      change_model <- chngptm(Y ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, ~ exposure, family = "gaussian", type = "segmented", var.type = "bootstrap", save.boot = T, data = data_ipw)
+      change_model <- chngptm(Y ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, ~ exposure, family = "gaussian", type = "segmented", var.type = "bootstrap", save.boot = T, data = data_ent)
       change_model_ent <- chngptm(Y ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, ~ exposure, family = "gaussian", 
-                                  type = "segmented", var.type = "bootstrap", save.boot = T, data = data_ipw, weights = data_ipw$IPW)
+                                  type = "segmented", var.type = "bootstrap", save.boot = T, data = data_ent, weights = data_ent$ent)
       
     } else {
       # fit unadjusted model
       change_model <- chngptm(Y ~ 1, ~ exposure, family = "gaussian", type = "segmented", var.type = "bootstrap", save.boot = T, data = data_example)
     }
-    
-    # Suppress propensity change point model for now, seemingly not working
-    #propensity_change <- chngptm(Y ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, ~ exposure, family = "gaussian", type = "segmented", var.type = "bootstrap", save.boot = T, data = data_ipw, weights = data_ipw$IPW)
     
     # Lets extract what the proposed change model threshold is
     change_assesed = change_model$chngpt
@@ -314,7 +279,7 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
     change_upper_ent = summary(change_model_ent)$chngpt[["upper)"]]
   
   # Now many points to evaluate the integral
-  discrete_points = 1000
+  discrete_points = 100
   
   # Predict the RC curve for every point
   ## Fix this for nonlinear first
@@ -350,19 +315,6 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
       } else {
         stop("Outcome relationship for now is only between linear and interaction")
       }
-      
-      # # Add on exposure effect
-      # if (exposure_relationship == "linear") {
-      #   Y = Y + potential_data$exposure
-      # } else if (exposure_relationship == "sublinear") {
-      #   Y = Y + 8 * log10(potential_data$exposure + 1)
-      # } else if (exposure_relationship == "threshold") {
-      #   # Set threshold at 5
-      #   thresh_exp <- potential_data$exposure 
-      #   thresh_exp[thresh_exp <= 5] <- 0
-      #   thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
-      #   Y = Y + thresh_exp
-      # }
       
       # Fit each model and take mean for ERC
       potential_outcome <- 
@@ -505,7 +457,7 @@ metrics_from_data <- function(exposure = NA, exposure_relationship = "linear", o
   
   data_metrics <- 
     data_prediction %>% 
-    tidyr::gather(model_types, key = "model", value = "prediction") %>% 
+    tidyr::gather(all_of(model_types), key = "model", value = "prediction") %>% 
     data.table()
 
   # Changing metric to calculate the bias, and also the absolute bias. Return it all for now

@@ -1,6 +1,0 @@
-Argument,Value
-sample_size,10000
-exp_relationship,sublinear
-adjust_confounder,T
-out_relationship,interaction
-confounder_setting,complex
