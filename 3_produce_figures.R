@@ -4,9 +4,9 @@ library(tidyverse)
 library(data.table)
 
 
-exp_relationship = "sublinear"
+exp_relationship = "linear"
 adjust_confounder = T
-time_stamp = "noncenter"
+model_tag = "first_draft2"
 replicates = 100
 
 # Grab repo directory whether on the cluster or computer
@@ -264,13 +264,5 @@ gg_example <-
 pdf(file = paste0(results_dir, "example.pdf"), width = 7, height = 6)
 print(gg_example)
 dev.off()
-
-
-
-
-### Now doing the same for more plots 
-
-
-
 
          

@@ -1,5 +1,6 @@
 # Function for running ERC sim on FASSE cluster 
 rm(list = ls())
+
 # Load libraries needed 
 library(tidyverse)
 library(data.table)
@@ -13,10 +14,7 @@ library(caret)
 library(WeightIt)
 library(chngpt)
 library(cobalt)
-#library("devtools")
-#install_github("fasrc/CausalGPS", force = T)
 library("CausalGPS", lib.loc = "/n/home_fasse/mcork/apps/ERC_simulation/R_4.0.5")
-# Change location of library so that it grabs the correct version of CausalGPS package
 
 
 # File paths
@@ -27,18 +25,13 @@ if (Sys.getenv("USER") == "mcork") {
   repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
 }
 
-# Read in config file and grab arguments
-config <- fread(paste0(repo_dir,"config.csv"), header = T)
-#exp_relationship <- as.character(config[Argument == "exp_relationship", Value])
+# Keep adjust confounder set to T
 adjust_confounder <- T
-#sample_sizes <- as.numeric(config[Argument == "sample_size", Value])
-#out_relationship <- as.character(config[Argument == "out_relationship", Value])
-#confounder_setting <- as.character(config[Argument == "confounder_setting", Value])
 
 # Define simulation number
 sim.num <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
 
-# pass argument that explains run
+# pass argument for model run
 args <- commandArgs(T)
 exp_relationship = as.character(args[[1]])
 run_title = as.character(args[[2]])
@@ -48,17 +41,13 @@ out_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder
 if (!dir.exists(out_dir)) dir.create(out_dir)
 
 # Create correct output directory (previously using time, now using whatever character you want)
-#out_dir_tag <- format(Sys.time(), "%m%d_%H")
 dir.create(paste0(out_dir, "/", run_title))
 out_dir <- paste0(out_dir, "/", run_title)
-
-# Write config to output directory for reproducing results (only do this once)
-if (sim.num == 1) write.csv(config, file = paste0(out_dir, "/config.csv"))
 
 # Source the appropriate functions needed for simulation 
 source(paste0(repo_dir, "/functions/simulation_functions.R"))
 
-# Define functions used
+# Define functions used for scaling exposure and gamma function
 cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
 scale_exposure <- function(x){20 * (x-min(x))/(max(x)-min(x))}
 
@@ -74,7 +63,7 @@ sim_cor_table <- data.table()
 # loop through all sample sizes included
 for (sample_size in c(200, 1000, 10000)) {
   # loop through all types of confounder settings
-  for (confounder_setting in c("simple", "nonzero")) {
+  for (confounder_setting in c("simple")) {
     # Loop through two different outcome relationships
     for (out_relationship in c("linear", "interaction")) {
     
@@ -114,7 +103,8 @@ for (sample_size in c(200, 1000, 10000)) {
       
       # Loop through each iteration of the GPS model included 
       for (gps_mod in 1:4) {
-        # Generate appropriate exposure (make this a function later)
+        # Generate appropriate exposure
+        # Make sure all are positive (and only keep sample size)
         if (gps_mod == 1) {
           x = 9 * cov_function(confounders_large) + 18 + rnorm(sample_size, mean = 0, sd = sqrt(10))
           exposure_df <- 
@@ -149,21 +139,37 @@ for (sample_size in c(200, 1000, 10000)) {
           confounders = as.matrix(exposure_df[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")])
         }
         
-        # Get metrics and predictions from sample
+        # Get metrics and predictions from sample using function
         metrics_predictions <- 
-          metrics_from_data(exposure = exposure, confounders = confounders, exposure_relationship = exp_relationship,
-                            outcome_relationship = out_relationship, sample_size = sample_size, family = "gaussian", 
-                            adjust_confounder = adjust_confounder, causal_gps = T)
+          metrics_from_data(exposure = exposure, 
+                            confounders = confounders, 
+                            exposure_relationship = exp_relationship,
+                            outcome_relationship = out_relationship, 
+                            sample_size = sample_size, 
+                            family = "gaussian", 
+                            adjust_confounder = adjust_confounder, 
+                            causal_gps = T)
         
         metrics <- metrics_predictions$metrics
         predictions <-  metrics_predictions$predictions
         cor_table <- metrics_predictions$cor_table
         
-        # Add appropriate columns
-        metrics <- metrics %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim.num, 
-                                      confounder_setting = confounder_setting, out_relationship = out_relationship)
-        predictions <- predictions %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim.num, 
-                                              confounder_setting = confounder_setting, out_relationship = out_relationship)
+        # Add appropriate columns to metrics and predictions
+        metrics <- 
+          metrics %>% 
+          mutate(gps_mod = gps_mod,
+                 sample_size = sample_size,
+                 sim = sim.num,
+                 confounder_setting = confounder_setting,
+                 out_relationship = out_relationship)
+        
+        predictions <- 
+          predictions %>% 
+          mutate(gps_mod = gps_mod, 
+                 sample_size = sample_size, 
+                 sim = sim.num,
+                 confounder_setting = confounder_setting,
+                 out_relationship = out_relationship)
         
         # put method for correlation table
         cor_table <- cor_table %>% mutate(method = "ipw", delta = 0)
