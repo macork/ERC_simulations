@@ -1,0 +1,1659 @@
+---
+title: "Simulation_results"
+author: "Michael Cork"
+date: "2022-08-18"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+This is the results markdown document used in paper 1 for Michael Cork dissertation. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+# Consider seeing Jenna Landy new themes available 
+# Load packages
+library(data.table)
+library(tidyverse)
+library(latex2exp)
+
+# Set directory --------
+# Grab repo directory whether on the cluster or computer
+if (Sys.getenv("USER") == "mcork") {
+  repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
+} else if (Sys.getenv("USER") == "michaelcork") {
+  repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
+}
+
+# set figures directory
+figure_dir <- paste0(repo_dir, "figures/")
+
+```
+# Load all of the data used in these results
+```{r}
+# First load the linear model example
+exp_relationship = "linear"
+adjust_confounder = T
+time_stamp = "first_draft2"
+replicates = 100
+
+results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
+
+aggregated_results <- readRDS(file = paste0(results_dir, "aggregated_results.RDS"))
+
+correlation_linear <- aggregated_results$correlation
+metrics_linear <- aggregated_results$metrics
+predictions_linear <- aggregated_results$predictions
+
+# Change name of models for simplicity 
+model_types = c("linear_model", "linear_gps", "gam_model", "gam_gps", "change_model", "change_gps", "causal_gps_default", "causal_gps_tuned")
+  
+# collapse by mean bias at each point of exposure
+metrics_collapse <- 
+  metrics_linear[, .(abs_bias = abs(mean(bias)),
+                     mse = mean(mse),
+                     rmse = sqrt(mean(mse))), 
+                 by = .(model, exposure, gps_mod, sample_size, confounder_setting, out_relationship)]
+
+metrics_collapse_linear <- 
+  metrics_collapse[, .(abs_bias = mean(abs_bias),
+                       mse = mean(mse),
+                       rmse = mean(rmse)), by = .(model, gps_mod, sample_size, confounder_setting, out_relationship)] %>% 
+  mutate(model = factor(model, levels = model_types))  %>% 
+  mutate(model  = fct_recode(model, linear = "linear_model", linear_wht = "linear_gps", gam = "gam_model", 
+                             gam_wht = "gam_gps", change_pnt = "change_model", causalGPS = "causal_gps_tuned")) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  mutate(out_relationship = factor(out_relationship, levels = c("linear", "interaction"))) %>% 
+  mutate(confounder_setting = factor(confounder_setting, levels = c("simple", "nonzero")))
+
+# Add correct labels  
+levels(metrics_collapse_linear$out_relationship) = c(linear = TeX("$\\mu_{linear}$"), interaction = TeX("$\\mu_{linear, int}$"))
+
+
+# Rename predictions to match with new model names
+predictions_linear <- 
+  predictions_linear %>% 
+  rename(linear = linear_model, linear_wht = linear_gps, gam = gam_model,
+         gam_wht = gam_gps, causalGPS = causal_gps_tuned, change_pnt = change_model, change_wht = change_gps) %>% 
+  data.table()
+
+
+# load sublinear ----------------------------------------------------------------------------------------
+exp_relationship = "sublinear"
+adjust_confounder = T
+time_stamp = "first_draft"
+replicates = 100
+
+results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
+
+aggregated_results <- readRDS(file = paste0(results_dir, "aggregated_results.RDS"))
+
+correlation_sublinear <- aggregated_results$correlation
+metrics_sublinear <- aggregated_results$metrics
+predictions_sublinear <- aggregated_results$predictions
+
+# collapse by mean bias at each point of exposure
+metrics_collapse <- 
+  metrics_sublinear[, .(abs_bias = abs(mean(bias)),
+                        mse = mean(mse),
+                        rmse = sqrt(mean(mse))), 
+                 by = .(model, exposure, gps_mod, sample_size, confounder_setting, out_relationship)]
+
+metrics_collapse_sublinear <- 
+  metrics_collapse[, .(abs_bias = mean(abs_bias),
+                       mse = mean(mse),
+                       rmse = mean(rmse)), by = .(model, gps_mod, sample_size, confounder_setting, out_relationship)] %>% 
+  mutate(model = factor(model, levels = model_types))  %>% 
+  mutate(model  = fct_recode(model, linear = "linear_model", linear_wht = "linear_gps", gam = "gam_model", 
+                             gam_wht = "gam_gps", change_pnt = "change_model", causalGPS = "causal_gps_tuned")) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  mutate(out_relationship = factor(out_relationship, levels = c("linear", "interaction"))) %>% 
+  mutate(confounder_setting = factor(confounder_setting, levels = c("simple", "nonzero")))
+
+# Add correct labels  
+levels(metrics_collapse_sublinear$out_relationship) = c(linear = TeX("$\\mu_{sublinear}$"), interaction = TeX("$\\mu_{sublinear, int}$"))
+
+predictions_sublinear <- 
+  predictions_sublinear %>%
+  rename(linear = linear_model, linear_wht = linear_gps, gam = gam_model,
+         gam_wht = gam_gps, causalGPS = causal_gps_tuned, change_pnt = change_model, change_wht = change_gps) %>% 
+  data.table()
+
+#load threshold ----------------------------------------------------------------------------------------
+exp_relationship = "threshold"
+adjust_confounder = T
+time_stamp = "first_draft2"
+replicates = 100
+
+results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
+
+aggregated_results <- readRDS(file = paste0(results_dir, "aggregated_results.RDS"))
+
+correlation_threshold <- aggregated_results$correlation
+metrics_threshold <- aggregated_results$metrics
+predictions_threshold <- aggregated_results$predictions
+
+# collapse by mean bias at each point of exposure
+metrics_collapse <- 
+  metrics_threshold[, .(abs_bias = abs(mean(bias)),
+                        mse = mean(mse),
+                        rmse = sqrt(mean(mse))), 
+                 by = .(model, exposure, gps_mod, sample_size, confounder_setting, out_relationship)]
+
+metrics_collapse_threshold <- 
+  metrics_collapse[, .(abs_bias = mean(abs_bias),
+                       mse = mean(mse),
+                       rmse = mean(rmse)), by = .(model, gps_mod, sample_size, confounder_setting, out_relationship)] %>% 
+  mutate(model = factor(model, levels = model_types))  %>% 
+  mutate(model  = fct_recode(model, linear = "linear_model", linear_wht = "linear_gps", gam = "gam_model", 
+                             gam_wht = "gam_gps", change_pnt = "change_model", causalGPS = "causal_gps_tuned")) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  mutate(out_relationship = factor(out_relationship, levels = c("linear", "interaction"))) %>% 
+  mutate(confounder_setting = factor(confounder_setting, levels = c("simple", "nonzero")))
+
+# Add correct labels  
+levels(metrics_collapse_threshold$out_relationship) = c(linear = TeX("$\\mu_{threshold}$"), interaction = TeX("$\\mu_{threshold, int}$"))
+
+
+predictions_threshold <- 
+  predictions_threshold %>% 
+  rename(linear = linear_model, linear_wht = linear_gps, gam = gam_model,
+         gam_wht = gam_gps, causalGPS = causal_gps_tuned, change_pnt = change_model, change_wht = change_gps) %>% 
+  data.table()
+
+```   
+
+# Results
+
+## Covariate balance with causal GPS
+
+We are looking into how many reach the covariate balance threshold. Look into covariate balance by tyoe of covariate balance and by sample size 
+
+```{r}
+# Calculate mean absolute correlation
+mean_abs_cor <- 
+  correlation_linear %>% 
+  pivot_longer(c("pre_cor", "post_cor"), names_to = "correlation") %>% 
+  group_by(gps_mod, correlation, sample_size, confounder_setting, out_relationship, method, sim) %>% 
+  dplyr::summarize(value = mean(value)) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  mutate(covariate = "mean") %>% 
+  data.table()
+
+# Look at percent of simulations that reach 0.1 
+mean_abs_cor %>% 
+  filter(correlation == "post_cor", out_relationship == "linear") %>% 
+  group_by(gps_mod, correlation, sample_size, confounder_setting, out_relationship, method) %>% 
+  dplyr::summarize(balance_pct = mean(value < 0.1)) %>% 
+  ungroup() %>% 
+  mutate(confounder_setting = factor(confounder_setting, levels = c("simple", "nonzero"))) %>% 
+  data.table() %>% 
+  ggplot(aes(x = gps_mod, y = balance_pct, color = method, group = method)) +
+  geom_point() + 
+  geom_line(size = 0.3) +
+  theme_bw() +
+  theme(legend.position = "bottom") + 
+  facet_grid(confounder_setting ~ sample_size) + 
+  labs(y = "Percent of simulations meeting threshold", x = "Covariate", title = "Percent of simulations reach 0.1 mean absolute correlation by sample size and covariate seting")
+
+balance_figure_1 <- 
+  mean_abs_cor %>% 
+  filter(correlation == "post_cor", out_relationship == "interaction", confounder_setting == "simple") %>%
+  filter(method %in% c("causal_gps_tuned", "ipw")) %>% 
+  mutate(method = gsub("causal_gps_tuned", "CausalGPS", method)) %>% 
+  mutate(method = gsub("ipw", "Entropy", method)) %>% 
+  group_by(gps_mod, correlation, sample_size, confounder_setting, out_relationship, method) %>% 
+  dplyr::summarize(balance_pct = mean(value < 0.1)) %>% 
+  ungroup() %>% 
+  mutate(confounder_setting = factor(confounder_setting, levels = c("simple", "nonzero"))) %>% 
+  data.table() %>% 
+  ggplot(aes(x = gps_mod, y = balance_pct, color = method, group = method)) +
+  geom_point() + 
+  geom_line(size = 0.3) +
+  theme_bw(base_size = 14) + 
+  theme(text = element_text(size=14),
+        axis.text.x = element_text(size = 12)) + 
+   theme(
+    legend.position = c(0.85, 0.2),
+    legend.title = element_blank(),
+    legend.text=element_text(size=16)
+  ) + 
+  scale_x_discrete(guide = guide_axis(angle = 40)) +
+  facet_wrap(~ sample_size) + 
+  scale_color_discrete("") + 
+  labs(y = "Proportion of simulations that\nmeet balance threshold", x = "Exposure model") # 
+
+ggsave(balance_figure_1, file = paste0(figure_dir, "fig1_balance.png"),
+       width = 10, height = 4,  dpi = 400)
+
+
+# Get simulations that are below 0.1 to add in table 
+# meet_balance_table_linear <- 
+#   mean_abs_cor %>% 
+#   filter(correlation == "post_cor") %>% 
+#   mutate(meet_balance = ifelse(mean < 0.1, 1, 0)) %>% 
+#   dplyr::select(gps_mod, sample_size, confounder_setting, out_relationship, method, sim, meet_balance)
+
+
+
+# Percent of simulations that reach covariate balance threshold
+# plot_reach_pct <- 
+#   correlation_linear %>% 
+#   pivot_longer(c("pre_cor", "post_cor"), names_to = "correlation") %>% 
+#   filter(correlation == "post_cor", out_relationship == "linear") %>% 
+#   group_by(gps_mod, correlation, sample_size, confounder_setting, out_relationship, method, sim) %>% 
+#   dplyr::summarize(balance_pct = mean(value < 0.1)) %>% 
+#   ungroup() %>% 
+#   mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+#                                     gps_mod == 2 ~ "heavy tail", 
+#                                     gps_mod == 3 ~ "nonlinear", 
+#                                     gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+#   mutate(confounder_setting = factor(confounder_setting, levels = c("simple", "nonzero"))) %>% 
+#   data.table() %>% 
+#   ggplot(aes(x = gps_mod, y = balance_pct, color = method, group = method)) +
+#   geom_point() + 
+#   geom_line(size = 0.3) +
+#   theme_bw() +
+#   theme(legend.position = "bottom") + 
+#   facet_grid(confounder_setting ~ sample_size) + 
+#   labs(y = "Percent of simulations meeting threshold", x = "Covariate", title = "Percent of simulations reach 0.1 mean absolute correlation by sample size and covariate seting")
+# 
+# plot_reach_pct
+#   
+
+# Put together data for correlation figure
+correlation_linear_summary <- 
+  correlation_linear %>% 
+ # filter(sample_size == 1000, confounder_setting == "simple", out_relationship == "linear", method == "ipw") %>% 
+  pivot_longer(c("pre_cor", "post_cor"), names_to = "correlation") %>% 
+  dplyr::select(gps_mod, covariate, correlation, sample_size, confounder_setting, out_relationship, method, sim, value) %>% 
+   mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  rbind(mean_abs_cor) %>% 
+  group_by(gps_mod, covariate, correlation, sample_size, confounder_setting, out_relationship, method) %>% 
+  dplyr::summarize(mean = mean(value),
+                   lower = quantile(value, 0.025), 
+                   upper = quantile(value, 0.975)) %>%
+  mutate(covariate = factor(covariate, levels = rev(c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6", "mean")))) %>% 
+  data.table()
+
+# Look at simple confounder setting IPW
+correlation_plot_entropy <- 
+  correlation_linear_summary %>% 
+  filter(sample_size == 1000, confounder_setting == "simple", out_relationship == "linear", method == "ipw") %>% 
+  ggplot(aes(x = covariate, y = mean, ymin = lower, ymax = upper, color = correlation, group = correlation)) +
+  geom_hline(aes(yintercept = 0.1)) + 
+  geom_errorbar(width = 0.5, position = position_dodge(width = 0.7)) +
+  geom_point(position = position_dodge(width = 0.7)) + 
+  scale_color_discrete("", breaks = c("pre_cor", "post_cor"), labels=c("Pre-weighting", "Post-weighting")) + 
+  #geom_line(size = 0.3) +
+  theme_bw(base_size = 14) + 
+  theme(text = element_text(size=14),
+        axis.text.x = element_text(size = 12)) + 
+  theme(legend.position = "bottom") + 
+  coord_flip() + 
+  facet_wrap(~ gps_mod) + 
+  labs(y = "Absolute correlation", x = "Covariate")
+
+ggsave(correlation_plot_entropy, file = paste0(figure_dir, "fig2_correlation_plot_entropy.png"),
+       width = 10, height = 7,  dpi = 400)
+
+# Repeat for CausalGPS package
+correlation_plot_CausalGPS <- 
+  correlation_linear_summary %>% 
+  filter(sample_size == 1000, confounder_setting == "simple", out_relationship == "linear", method == "causal_gps_tuned") %>% 
+  ggplot(aes(x = covariate, y = mean, ymin = lower, ymax = upper, color = correlation, group = correlation)) +
+  geom_hline(aes(yintercept = 0.1)) + 
+  geom_errorbar(width = 0.5, position = position_dodge(width = 0.7)) +
+  geom_point(position = position_dodge(width = 0.7)) + 
+  scale_color_discrete("", breaks = c("pre_cor", "post_cor"), labels=c("Pre-weighting", "Post-weighting")) + 
+   theme_bw(base_size = 14) + 
+  theme(text = element_text(size=14),
+        axis.text.x = element_text(size = 12)) + 
+  theme(legend.position = "bottom") + 
+  coord_flip() + 
+  facet_wrap(~ gps_mod) + 
+  labs(y = "Absolute correlation", x = "Covariate")
+
+ggsave(correlation_plot_CausalGPS, file = paste0(figure_dir, "fig3_correlation_plot_causalGPS.png"),
+       width = 10, height = 7,  dpi = 400)
+
+
+# # Look at nonzero confounder setting IPW
+# correlation_linear_summary %>% 
+#  filter(sample_size == 1000, confounder_setting == "nonzero", out_relationship == "linear", method == "ipw") %>% 
+#   ggplot(aes(x = covariate, y = mean, ymin = lower, ymax = upper, color = correlation, group = correlation)) +
+#   geom_hline(aes(yintercept = 0.1)) + 
+#   geom_errorbar(width = 0.5, position = position_dodge(width = 0.7)) +
+#   geom_point(position = position_dodge(width = 0.7)) + 
+#   theme_bw() +
+#   coord_flip() + 
+#   facet_wrap(~ gps_mod) + 
+#   labs(y = "Absolute correlation", x = "Covariate", title = "Covariate balance using IPW nonzero covariate (N = 1000)")
+# 
+# 
+# # Now look into tuned causal GPS 
+# correlation_linear_summary %>% 
+#  filter(sample_size == 1000, confounder_setting == "simple", out_relationship == "linear", method == "causal_gps_tuned") %>% 
+#   ggplot(aes(x = covariate, y = mean, ymin = lower, ymax = upper, color = correlation, group = correlation)) +
+#   geom_hline(aes(yintercept = 0.1)) + 
+#   geom_errorbar(width = 0.5, position = position_dodge(width = 0.7)) +
+#   geom_point(position = position_dodge(width = 0.7)) + 
+#   #geom_line(size = 0.3) +
+#   theme_bw() +
+#   coord_flip() + 
+#   facet_wrap(~ gps_mod) + 
+#   labs(y = "Absolute correlation", x = "Covariate", title = "Covariate balance using CausalGPS zero centered covariate (N = 1000)")
+# 
+# 
+# correlation_linear_summary %>% 
+#  filter(sample_size == 1000, confounder_setting == "nonzero", out_relationship == "linear", method == "causal_gps_tuned") %>% 
+#   ggplot(aes(x = covariate, y = mean, ymin = lower, ymax = upper, color = correlation, group = correlation)) +
+#   geom_hline(aes(yintercept = 0.1)) + 
+#   geom_errorbar(width = 0.5, position = position_dodge(width = 0.7)) +
+#   geom_point(position = position_dodge(width = 0.7)) + 
+#   #geom_line(size = 0.3) +
+#   theme_bw() +
+#   coord_flip() + 
+#   facet_wrap(~ gps_mod) + 
+#   labs(y = "Absolute correlation", x = "Covariate", title = "Covariate balance using CausalGPS using nonzero covariate (N = 1000)")
+```
+
+
+## Linear expsoure response curve
+
+When there is a marginal linear relationship between the exposure and response, we compare how our estimators perform under two outcome models: one with a linear relationship between confounders and outcome and one with an interaction term. The linear and interaction models are shown below, respectively:
+
+$$
+\begin{split} 
+Y|E,C &\sim N(\mu(E, C), 10^2) \\
+\mu(E, C) &= 20 + E - (2, 2, 3, -1, 2, 2)*C
+\end{split}
+$$
+
+$$
+\begin{split} 
+Y|E,C &\sim N(\mu(E, C), 10^2) \\
+\mu(E, C) &= 20 + E - (2, 2, 3, -1, 2, 2)*C + E(-0.1C_1 + 0.1C_3^2 + 0.1C_4 + 0.1C_5)
+\end{split}
+$$
+We also compare sample sizes of 200, 1000 and 10000, as well as two confounder settings: one where the confoudners all have mean zero (simple) and one where they are not ceentered at zero (nonzero). Both are shown below:
+$$ C_1, ..., C_4 \sim N(0, I_4), C_5 \sim V \: \{-2, 2 \}, C_6 \sim U \: (-3, 3) $$
+$$ C_1, ..., C_4 \sim N(2, I_4), C_5 \sim V \: \{-3, 2 \}, C_6 \sim U \: (-1, 4) $$
+
+When fixing the sample size at 1000, we compare the bias of our model when the outcome model is linear, or an interaction (facet on x axis) or when the confounders have mean zero (simple) or nonzero (nonzero), shown on the facet on the y axis. 
+```{r}
+
+# Function to make bias and RMSE plots for outcome model setting
+bias_RMSE_plots <- function(out_model) {
+  
+  if (out_model == "linear") {
+    metrics_collapse = metrics_collapse_linear
+  } else if (out_model == "sublinear") {
+    metrics_collapse = metrics_collapse_sublinear
+  } else if (out_model == "threshold") {
+     metrics_collapse = metrics_collapse_threshold
+  } else {
+    stop("Outcome model must be linear, sublinear or threshold")
+  }
+  
+  # Absolute bias plot
+  abs_bias_plot <- 
+    metrics_collapse %>% 
+    filter(model != "causal_gps_default") %>% 
+    filter(confounder_setting == "simple") %>% 
+    #filter(sample_size == 1000) %>% 
+    ggplot() + 
+    geom_hline(yintercept = 0, size = 0.15, linetype = "dashed") +
+    geom_point(aes(y = abs_bias, x = factor(gps_mod), 
+                   color = model, fill = model, shape = model), position = position_dodge(.85), size = 1.8) + 
+    geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+    labs(x = "Scenario", y = "Value") + 
+    theme_bw(base_size = 14) + 
+    theme(legend.position = "bottom") + 
+    guides(colour = guide_legend(nrow = 1)) + 
+    theme(text = element_text(size=14),
+          axis.text.x = element_text(size = 12)) + 
+    scale_shape_manual(values=c(21, 10, 22, 12, 23, 9, 8))+
+    #coord_cartesian(ylim = c(-15, 15)) + 
+    facet_grid(sample_size ~ out_relationship, scales = "free", labeller = label_parsed) + 
+    #facet_wrap(~ out_relationship, scales = "free") + 
+    labs(y = "Absolute bias", x = "Exposure model")
+  
+  # Now plot the RMSE 
+  rmse_plot <- 
+    metrics_collapse %>% 
+    filter(model != "causal_gps_default") %>% 
+    filter(confounder_setting == "simple") %>% 
+    #filter(sample_size == 1000) %>% 
+    ggplot() + 
+    geom_hline(yintercept = 0, size = 0.15, linetype = "dashed") +
+    geom_point(aes(y = rmse, x = factor(gps_mod), color = model, fill = model, shape = model), position = position_dodge(.85), size = 1.8) + 
+    # geom_pointrange(aes(y = mean, ymin = mean - sd, ymax = mean + sd, x = factor(gps_mod), color = model), position = position_dodge(.85), size = 0.35) +
+    geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+    labs(x = "Scenario", y = "Value") + 
+    # scale_y_continuous(trans='log10') + 
+    theme_bw(base_size = 14) + 
+    theme(legend.position = "bottom") + 
+    guides(colour = guide_legend(nrow = 1)) + 
+    theme(text = element_text(size=14),
+          axis.text.x = element_text(size = 12)) + 
+    scale_shape_manual(values=c(21, 10, 22, 12, 23, 9, 8)) +
+    #coord_cartesian(ylim = c(-15, 15)) + 
+    facet_grid(sample_size ~ out_relationship, scales = "free", labeller = label_parsed) + 
+    #facet_wrap(~ out_relationship, scales = "free") + 
+    labs(y = "Root mean squared error (RMSE)", x = "Exposure model")
+  
+  # Now return both plots
+  return(list(bias_plot = abs_bias_plot, rmse_plot = rmse_plot))
+}
+
+linear_plots <- bias_RMSE_plots("linear")
+abs_bias_linear <- linear_plots[[1]]
+rmse_linear <- linear_plots[[2]]
+
+# Save plots
+ggsave(
+  filename = paste0(figure_dir, "fig4_abs_bias_linear.png"),
+  plot = abs_bias_linear,
+  width = 10,
+  height = 7,
+  dpi = 400
+)
+
+ggsave(
+  filename = paste0(figure_dir, "fig5_rmse_linear.png"),
+  plot = rmse_linear,
+  width = 10,
+  height = 7,
+  dpi = 400
+)
+
+# Now for sublinear ----------------------------------------
+sublinear_plots <- bias_RMSE_plots("sublinear")
+abs_bias_sublinear <- sublinear_plots[[1]]
+rmse_sublinear <- sublinear_plots[[2]]
+
+# Save plots
+ggsave(
+  filename = paste0(figure_dir, "fig7_abs_bias_sublinear.png"),
+  plot = abs_bias_sublinear,
+  width = 10,
+  height = 7,
+  dpi = 400
+)
+
+ggsave(
+  filename = paste0(figure_dir, "fig8_rmse_sublinear.png"),
+  plot = rmse_sublinear,
+  width = 10,
+  height = 7,
+  dpi = 400
+)
+
+
+# Now for threshold ----------------------------------------
+threshold_plots <- bias_RMSE_plots("threshold")
+abs_bias_threshold<- threshold_plots[[1]]
+rmse_threshold <- threshold_plots[[2]]
+
+# Save plots
+ggsave(
+  filename = paste0(figure_dir, "fig10_abs_bias_threshold.png"),
+  plot = abs_bias_threshold,
+  width = 10,
+  height = 7,
+  dpi = 400
+)
+
+ggsave(
+  filename = paste0(figure_dir, "fig11_rmse_threshold.png"),
+  plot = rmse_threshold,
+  width = 10,
+  height = 7,
+  dpi = 400
+)
+
+```
+
+Now add the trace plots of ERC
+
+We can look at the prediction plots with a sample size of 1000 and outcome model fixed to be the interaction type. 
+```{r}
+# Prediction plots for ERC under heterogeneous treatment effects
+pred_plot <-
+  predictions_linear %>%
+  filter(confounder_setting == "simple", out_relationship == "interaction", sample_size == 1000) %>% 
+  dplyr::select(-causal_gps_default) %>% 
+  tidyr::pivot_longer(c("linear", "linear_wht", "gam", "gam_wht", "change_pnt","change_wht", "causalGPS", "true_fit")) %>%
+  mutate(name = factor(name, levels = c("linear", "linear_wht", "gam", "gam_wht", "causalGPS", "change_model", "change_pnt", "change_wht", "true_fit"))) %>% 
+  data.table()
+
+# Now create summary statistic based on mean/lower/upper 
+pred_summary <-
+  pred_plot[,.(mean = mean(value),
+               lower = quantile(value, 0.05),
+               upper = quantile(value, 0.95)), by=.(exposure, gps_mod, sample_size, confounder_setting, out_relationship, name)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavytail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavytail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+# Get a sample of predictions to plot
+pred_sample <- 
+  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavytail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavytail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+levels(pred_summary$gps_mod) <- c(linear = TeX("$E_{linear}$"), heavytail = TeX("$E_{heavytail}$"), nonlinear = TeX("$E_{nonlinear}$"), interaction = TeX("$E_{interaction}$"))
+levels(pred_sample$gps_mod) <- c(linear = TeX("$E_{linear}$"), heavytail = TeX("$E_{heavytail}$"), nonlinear = TeX("$E_{nonlinear}$"), interaction = TeX("$E_{interaction}$"))
+
+# Plot the true fit
+true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
+
+gg_trace_plot <- 
+  ggplot() +
+  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5, size = 0.3) + 
+  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
+  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid", size = 0.3) +
+  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed", size = 0.3) +
+  labs(x = "Exposure", y = "Response", title = "") +
+  theme_bw(base_size = 14) + 
+  theme(text = element_text(size=14),
+        axis.text.x = element_text(size = 12)) + 
+  coord_cartesian(ylim = c(10, 50)) + 
+  facet_grid(name ~ gps_mod, labeller = label_parsed) + 
+  theme(legend.position = "none")
+
+# Save plots to use in results
+ggsave(
+  filename = paste0(figure_dir, "fig6_ERC_linear.png"),
+  plot = gg_trace_plot,
+  width = 12,
+  height = 8.5,
+  dpi = 400
+)
+
+# # Now remove the linear and heavy tail case since these are pretty similar in linear outcome model (depending if you want to do that)
+# gg_trace_plot_interaction <- 
+#   ggplot() +
+#   geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000 & gps_mod %in% c("nonlinear", "interaction")], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5, size = 0.3) + 
+#   scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
+#   geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000 & gps_mod %in% c("nonlinear", "interaction")], aes(x = exposure, y = mean), linetype = "solid", size = 0.3) +
+#   geom_line(data = true_fit_plot[sample_size == 1000 & gps_mod %in% c("nonlinear", "interaction")], aes(x = exposure, y = mean), color = "black", linetype = "dashed", size = 0.3) +
+#   labs(x = "Exposure", y = "Response", title = "ERC curve in simple covariate setting with interaction outcome model") +
+#   theme_bw() +
+#   coord_cartesian(ylim = c(10, 50)) + 
+#   facet_grid(name ~ gps_mod) + 
+#   theme(legend.position = "none") + 
+#   theme(text = element_text(size = 12))  
+# 
+# gg_trace_plot_interaction
+
+```
+
+
+
+```{r}
+
+# plot_data_linear <- 
+#   metrics_collapse_final %>% 
+#   mutate(absolute_bias = abs(bias)) %>% 
+#   dplyr::select(-mse) %>% # Focus on RMSE for now
+#   tidyr::pivot_longer(c("bias", "absolute_bias", "rmse")) %>% 
+#   dplyr::group_by(model, gps_mod, sample_size, confounder_setting, out_relationship, name) %>% 
+#   dplyr::summarize(mean = mean(value), 
+#                    lower = quantile(value, 0.025),
+#                    upper = quantile(value, 0.975),
+#                    sd = sd(value)) %>% 
+#   ungroup()
+
+
+
+
+
+
+
+# These are additional plots that we will include in supplemental material, etc. -------------------------
+# Add on balance plot
+# Do I include plots where we only include those that meet the threshold? I could do that, but maybe in the supplementary materials
+plot_data_meet_balance <- 
+  metrics_linear %>% 
+  filter(model == "causalGPS") %>% 
+  left_join(filter(meet_balance_table_linear, method == "causal_gps_tuned")) %>% 
+  mutate(absolute_bias = abs(bias)) %>% 
+  tidyr::pivot_longer(c("bias", "absolute_bias", "mse")) %>% 
+  dplyr::group_by(model, gps_mod, sample_size, confounder_setting, out_relationship, name, meet_balance) %>% 
+  dplyr::summarize(mean = mean(value), 
+                   lower = quantile(value, 0.025),
+                   upper = quantile(value, 0.975)) %>% 
+  ungroup()
+
+plot_data_meet_balance %>% 
+  filter(name == "bias") %>% 
+  filter(sample_size == 1000) %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = factor(meet_balance)), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_grid(confounder_setting ~ out_relationship, scales = "free") + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias depending on whether balance threshold met"))
+
+plot_data_meet_balance %>% 
+  filter(name == "mse") %>% 
+  filter(sample_size == 1000) %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = factor(meet_balance)), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_grid(confounder_setting ~ out_relationship, scales = "free") + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias and MSE depending on whether balance threshold met"))
+
+
+# Plot results for linear
+plot_data_linear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "bias", confounder_setting == "simple") %>% 
+  filter(sample_size == 1000) %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_grid(sample_size ~ out_relationship, scales = "free") + 
+  facet_wrap(~ out_relationship, scales = "free") + 
+  labs(y = "Bias", x = "Exposure model")
+
+
+# Plot results from linear
+
+plot_bias_linear <- 
+  plot_data_linear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "bias") %>% 
+  filter(sample_size == 1000) %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_grid(confounder_setting ~ out_relationship, scales = "free") + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias plots for linear ERC, by outcome model and confounder type"))
+plot_bias_linear
+
+
+# Joining to only plot results that are below 0.1
+```
+
+For the outcome relationship fixed at an interaction term and the confounder relationship nonzero, we show that increasing sample size does little to change mean bias but decreases uncertainty:
+
+```{r}
+plot_data_linear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "bias") %>% 
+  filter(confounder_setting == "nonzero", out_relationship == "interaction") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_wrap(~ sample_size) + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias as a function of sample size"))
+
+```
+
+When fixing the sample size at 1000, we compare the mse of our model when the outcome model is linear, or an interaction (facet on x axis) or when the confounders have mean zero (simple) or nonzero (nonzero), shown on the facet on the y axis. 
+```{r}
+# note that making linear does not do anything. So making the coefficients non zero helps make it unbiased, which is weird. What might be going on here? Want to ask Kevin potentially
+
+plot_abs_bias_linear <- 
+  plot_data_linear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "absolute_bias") %>% 
+  filter(sample_size == 1000, confounder_setting == "simple") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_wrap(~ out_relationship) + 
+    labs(y = "Bias", x = "Confounding Scenario", title = paste("Absolute bias with linear exposure-outcome relationship"))
+
+#plot_abs_bias_linear
+
+plot_mse_linear <- 
+  plot_data_linear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "mse") %>% 
+  filter(sample_size == 1000) %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  #coord_cartesian(ylim = c(0, 50)) + 
+  facet_grid(confounder_setting ~ out_relationship, scales = "free") + 
+  labs(y = "MSE", x = "Confounding Scenario", title = paste("MSE plots for linear ERC, by outcome model and confounder type"))
+plot_mse_linear
+
+```
+
+
+And here are the ERC curve when we have nonzero confounder setting
+```{r}
+# Now look at trace plots for linear case, might give better idea of what is going on here 
+pred_plot <-
+  predictions_linear %>%
+  filter(confounder_setting == "nonzero", out_relationship == "interaction", sample_size == 1000) %>% 
+  dplyr::select(-causal_gps_default) %>% 
+  tidyr::pivot_longer(c("linear", "linear_wht", "gam", "gam_wht", "change_pnt", "causalGPS", "true_fit")) %>%
+  mutate(name = factor(name, levels = c("linear", "linear_wht", "gam", "gam_wht", "causalGPS", "change_model", "change_pnt", "true_fit"))) %>% 
+  data.table()
+
+pred_summary <-
+  pred_plot[,.(mean = mean(value),
+               lower = quantile(value, 0.025),
+               upper = quantile(value, 0.975)), by=.(exposure, gps_mod, sample_size, confounder_setting, out_relationship, name)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+# Get a sample of predictions to plot
+pred_sample <- 
+  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
+
+gg_trace_plot_interaction <- 
+  ggplot() +
+  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
+  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
+  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +
+  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
+  labs(x = "Exposure", y = "Response", title = "ERC curve in simple covariate setting with interaction outcome model") +
+  theme_bw() +
+  coord_cartesian(ylim = c(10, 50)) + 
+  facet_grid(name ~ gps_mod) + 
+  theme(legend.position = "none") + 
+  theme(text = element_text(size = 12))  
+
+gg_trace_plot_interaction
+
+```
+\newpage
+
+### Sublinear exposure response curve
+
+\begin{equation}
+\begin{split} 
+    Y|E,C &\sim N(\mu(E, C), 10^2) \\
+    \mu(E, C) &= 20 - (2, 2, 3, -1, 2, 2)*C + 3\log(E + 1)(-0.1C_1 + 0.1C_3^2 + 0.1C_4 + 0.1C_5) + 3\log(E + 1)
+\end{split}
+\end{equation}
+
+
+When fixing the sample size at 1000, we compare the bias of our model when the outcome model is linear, or an interaction (facet on x axis) or when the confounders have mean zero (simple) or nonzero (nonzero), shown on the facet on the y axis. 
+
+```{r}
+
+# Turn the MSE into RMSE for these plots!
+metrics_sublinear$rmse <- sqrt(metrics_sublinear$mse)
+
+plot_data_sublinear <- 
+  metrics_sublinear %>% 
+  mutate(absolute_bias = abs(bias)) %>% 
+  dplyr::select(-mse) %>% # Focus on RMSE for now
+  tidyr::pivot_longer(c("bias", "absolute_bias", "rmse")) %>% 
+  dplyr::group_by(model, gps_mod, sample_size, confounder_setting, out_relationship, name) %>% 
+  dplyr::summarize(mean = mean(value), 
+                   lower = quantile(value, 0.025),
+                   upper = quantile(value, 0.975),
+                   sd = sd(value)) %>% 
+  ungroup() %>% 
+  mutate(out_relationship = factor(out_relationship, levels = c("linear", "interaction")))
+
+
+# This could be the bias plot used in the paper
+outcome_label = c("Linear outcome model", "Interaction outcome model")
+names(outcome_label) <- c("linear", "interaction")
+
+bias_sublinear_plot <- 
+  plot_data_sublinear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "bias", confounder_setting == "simple") %>% 
+  #filter(sample_size == 1000) %>% 
+  ggplot() + 
+  geom_hline(yintercept = 0, size = 0.15, linetype="dashed") +
+  geom_pointrange(aes(y = mean, ymin = mean - sd, ymax = mean + sd, x = factor(gps_mod), color = model), position = position_dodge(.85), size = 0.35) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") +
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  theme(text = element_text(size=14),
+        axis.text.x = element_text(size = 12)) +
+  facet_grid(sample_size ~ out_relationship, scales = "free", labeller = labeller(out_relationship= outcome_label)) + 
+  labs(y = "Bias", x = "Exposure model")
+bias_sublinear_plot
+
+# This could be the RMSE plot
+rmse_sublinear_plot <- 
+  plot_data_sublinear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "rmse", confounder_setting == "simple") %>% 
+  #filter(sample_size == 1000) %>% 
+  ggplot() + 
+  geom_hline(yintercept = 0, size = 0.15, linetype="dashed") +
+  geom_pointrange(aes(y = mean, ymin = mean + sd, ymax = mean - sd, x = factor(gps_mod), color = model), position = position_dodge(.85), size = 0.35) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  theme(text = element_text(size=14),
+        axis.text.x = element_text(size = 12)) + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_grid(sample_size ~ out_relationship, scales = "free", labeller = labeller(out_relationship= outcome_label)) + 
+  #facet_wrap(~ out_relationship, scales = "free") + 
+  labs(y = "RMSE", x = "Exposure model")
+
+rmse_sublinear_plot
+
+
+```
+
+
+
+For the outcome relationship fixed at an interaction term and the confounder relationship nonzero, we show that increasing sample size does little to change mean bias but decreases uncertainty:
+
+```{r}
+plot_data_sublinear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "bias") %>% 
+  filter(confounder_setting == "nonzero", out_relationship == "interaction") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  facet_wrap(~ sample_size) + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias as a function of sample size"))
+
+```
+
+When fixing the sample size at 1000, we compare the mse of our model when the outcome model is linear, or an interaction (facet on x axis) or when the confounders have mean zero (simple) or nonzero (nonzero), shown on the facet on the y axis. 
+```{r}
+# note that making linear does not do anything. So making the coefficients non zero helps make it unbiased, which is weird. What might be going on here? Want to ask Kevin potentially
+
+plot_abs_bias_sublinear <- 
+  plot_data_sublinear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "absolute_bias") %>% 
+  filter(sample_size == 1000, confounder_setting == "simple") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  facet_wrap(~ out_relationship) + 
+    labs(y = "Bias", x = "Confounding Scenario", title = paste("Absolute bias with linear exposure-outcome relationship"))
+
+#plot_abs_bias_linear
+
+plot_mse_sublinear <- 
+  plot_data_sublinear %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "mse") %>% 
+  filter(sample_size == 1000) %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  facet_grid(confounder_setting ~ out_relationship, scales = "free") + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias plots for linear ERC, by outcome model and confounder type"))
+plot_mse_sublinear
+
+```
+
+
+We can look at the line plots in the simple confounder setting with a sample size of 1000:
+```{r}
+# Now look at trace plots for linear case, might give better idea of what is going on here 
+pred_plot <-
+  predictions_sublinear %>%
+  filter(confounder_setting == "simple", out_relationship == "interaction", sample_size == 1000) %>% 
+  dplyr::select(-causal_gps_default) %>% 
+  tidyr::pivot_longer(c("linear", "linear_wht", "gam", "gam_wht", "change_pnt", "change_pnt_ent", "causalGPS", "true_fit")) %>%
+  mutate(name = factor(name, levels = c("linear", "linear_wht", "gam", "gam_wht", "causalGPS", "change_model", "change_pnt", "change_pnt_ent", "true_fit"))) %>% 
+  data.table()
+
+pred_plot <-
+  predictions_sublinear %>%
+  filter(confounder_setting == "simple", out_relationship == "interaction", sample_size == 1000) %>% 
+  dplyr::select(-causal_gps_default) %>% 
+  tidyr::pivot_longer(c("linear_model", "linear_gps", "gam_model", "gam_gps", "change_pnt", "change_pnt_ent", "causalGPS", "true_fit")) %>%
+  mutate(name = factor(name, levels = c("linear", "linear_wht", "gam", "gam_wht", "causalGPS", "change_model", "change_pnt", "change_pnt_ent", "true_fit"))) %>% 
+  data.table()
+
+pred_summary <-
+  pred_plot[,.(mean = mean(value),
+               lower = quantile(value, 0.025),
+               upper = quantile(value, 0.975)), by=.(exposure, gps_mod, sample_size, confounder_setting, out_relationship, name)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+# Get a sample of predictions to plot
+pred_sample <- 
+  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
+
+
+gg_trace_plot_sublinear <- 
+  ggplot() +
+  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5, size = 0.3) + 
+  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
+  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid", size = 0.3) +
+  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed", size = 0.3) +
+  labs(x = "Exposure", y = "Response", title = "") +
+  theme_bw() +
+  coord_cartesian(ylim = c(10, 50)) + 
+  facet_grid(name ~ gps_mod) + 
+  theme(legend.position = "none") + 
+  theme(text = element_text(size = 12))  
+
+gg_trace_plot_sublinear
+
+```
+
+And here are the ERC curve when we have nonzero confounder setting
+```{r}
+# Now look at trace plots for linear case, might give better idea of what is going on here 
+pred_plot <-
+  predictions_sublinear %>%
+  filter(confounder_setting == "nonzero", out_relationship == "interaction", sample_size == 1000) %>% 
+  dplyr::select(-causal_gps_default) %>% 
+  tidyr::pivot_longer(c("linear", "linear_wht", "gam", "gam_wht", "change_pnt", "causalGPS", "true_fit")) %>%
+  mutate(name = factor(name, levels = c("linear", "linear_wht", "gam", "gam_wht", "causalGPS", "change_model", "change_pnt", "true_fit"))) %>% 
+  data.table()
+
+pred_summary <-
+  pred_plot[,.(mean = mean(value),
+               lower = quantile(value, 0.025),
+               upper = quantile(value, 0.975)), by=.(exposure, gps_mod, sample_size, confounder_setting, out_relationship, name)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+# Get a sample of predictions to plot
+pred_sample <- 
+  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
+
+
+gg_trace_plot_interaction <- 
+  ggplot() +
+  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
+  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
+  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +
+  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
+  labs(x = "Exposure", y = "Response", title = "ERC curve in simple covariate setting with interaction outcome model") +
+  theme_bw() +
+  coord_cartesian(ylim = c(5, 35)) + 
+  facet_grid(name ~ gps_mod) + 
+  theme(legend.position = "none") + 
+  theme(text = element_text(size = 12))  
+
+gg_trace_plot_interaction
+
+```
+
+\newpage
+
+## Threshold exposure response curve
+
+When fixing the sample size at 1000, we compare the bias of our model when the outcome model is linear, or an interaction (facet on x axis) or when the confounders have mean zero (simple) or nonzero (nonzero), shown on the facet on the y axis. 
+
+```{r}
+
+# Turn the MSE into RMSE for these plots!
+metrics_threshold$rmse <- sqrt(metrics_threshold$mse)
+
+plot_data_threshold <- 
+  metrics_threshold %>% 
+  mutate(absolute_bias = abs(bias)) %>% 
+  dplyr::select(-mse) %>% # Focus on RMSE for now
+  tidyr::pivot_longer(c("bias", "absolute_bias", "rmse")) %>% 
+  dplyr::group_by(model, gps_mod, sample_size, confounder_setting, out_relationship, name) %>% 
+  dplyr::summarize(mean = mean(value), 
+                   lower = quantile(value, 0.025),
+                   upper = quantile(value, 0.975),
+                   sd = sd(value)) %>% 
+  ungroup() %>% 
+  mutate(out_relationship = factor(out_relationship, levels = c("linear", "interaction")))
+
+
+# This could be the bias plot used in the paper
+outcome_label = c("Linear outcome model", "Interaction outcome model")
+names(outcome_label) <- c("linear", "interaction")
+
+bias_threshold_plot <- 
+  plot_data_threshold %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "bias", confounder_setting == "simple") %>% 
+  #filter(sample_size == 1000) %>% 
+  ggplot() + 
+  geom_hline(yintercept = 0, size = 0.15, linetype="dashed") +
+  geom_pointrange(aes(y = mean, ymin = mean - sd, ymax = mean + sd, x = factor(gps_mod), color = model), position = position_dodge(.85), size = 0.35) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") +
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  theme(text = element_text(size=14),
+        axis.text.x = element_text(size = 12)) +
+  facet_grid(sample_size ~ out_relationship, scales = "free", labeller = labeller(out_relationship= outcome_label)) + 
+  labs(y = "Bias", x = "Exposure model")
+bias_threshold_plot
+
+# This could be the RMSE plot
+rmse_threshold_plot <- 
+  plot_data_threshold %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "rmse", confounder_setting == "simple") %>% 
+  #filter(sample_size == 1000) %>% 
+  ggplot() + 
+  geom_hline(yintercept = 0, size = 0.15, linetype="dashed") +
+  geom_pointrange(aes(y = mean, ymin = mean + sd, ymax = mean - sd, x = factor(gps_mod), color = model), position = position_dodge(.85), size = 0.35) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  theme(text = element_text(size=14),
+        axis.text.x = element_text(size = 12)) + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_grid(sample_size ~ out_relationship, scales = "free", labeller = labeller(out_relationship= outcome_label)) + 
+  #facet_wrap(~ out_relationship, scales = "free") + 
+  labs(y = "RMSE", x = "Exposure model")
+
+rmse_threshold_plot
+
+
+```
+
+
+For the outcome relationship fixed at an interaction term and the confounder relationship nonzero, we show that increasing sample size does little to change mean bias but decreases uncertainty:
+
+```{r}
+plot_data_threshold %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "bias") %>% 
+  filter(confounder_setting == "nonzero", out_relationship == "interaction") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  facet_wrap(~ sample_size) + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias as a function of sample size"))
+
+```
+
+When fixing the sample size at 1000, we compare the mse of our model when the outcome model is linear, or an interaction (facet on x axis) or when the confounders have mean zero (simple) or nonzero (nonzero), shown on the facet on the y axis. 
+```{r}
+# note that making linear does not do anything. So making the coefficients non zero helps make it unbiased, which is weird. What might be going on here? Want to ask Kevin potentially
+
+plot_abs_bias_threshold <- 
+  plot_data_threshold %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "absolute_bias") %>% 
+  filter(sample_size == 1000, confounder_setting == "simple") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  facet_wrap(~ out_relationship) + 
+    labs(y = "Bias", x = "Confounding Scenario", title = paste("Absolute bias with linear exposure-outcome relationship"))
+
+#plot_abs_bias_linear
+
+plot_mse_threshold <- 
+  plot_data_threshold %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "mse") %>% 
+  filter(sample_size == 1000) %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  theme(legend.position = "bottom") + 
+  guides(colour = guide_legend(nrow = 1)) + 
+  facet_grid(confounder_setting ~ out_relationship, scales = "free") + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias plots for linear ERC, by outcome model and confounder type"))
+plot_mse_threshold
+
+```
+
+
+We can look at the line plots in the simple confounder setting with a sample size of 1000:
+```{r}
+# Now look at trace plots for linear case, might give better idea of what is going on here 
+pred_plot <-
+  predictions_threshold %>%
+  filter(confounder_setting == "simple", out_relationship == "linear", sample_size == 1000) %>% 
+  dplyr::select(-causal_gps_default) %>% 
+  tidyr::pivot_longer(c("linear", "linear_wht", "gam", "gam_wht", "change_pnt", "causalGPS", "true_fit")) %>%
+  mutate(name = factor(name, levels = c("linear", "linear_wht", "gam", "gam_wht", "causalGPS", "change_model", "change_pnt", "true_fit"))) %>% 
+  data.table()
+
+pred_summary <-
+  pred_plot[,.(mean = mean(value),
+               lower = quantile(value, 0.025),
+               upper = quantile(value, 0.975)), by=.(exposure, gps_mod, sample_size, confounder_setting, out_relationship, name)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+# Get a sample of predictions to plot
+pred_sample <- 
+  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
+
+
+erc_interaction_threshold <- 
+  ggplot() +
+  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5, size = 0.3) + 
+  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
+  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid", size = 0.3) +
+  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed", size = 0.3) +
+  labs(x = "Exposure", y = "Response", title = "") +
+  theme_bw() +
+  #coord_cartesian(ylim = c(10, 50)) + 
+  facet_grid(name ~ gps_mod) + 
+  theme(legend.position = "none") + 
+  theme(text = element_text(size = 12))  
+
+erc_interaction_threshold
+
+```
+
+And here are the ERC curve when we have nonzero confounder setting
+```{r}
+# Now look at trace plots for linear case, might give better idea of what is going on here 
+pred_plot <-
+  predictions_threshold %>%
+  filter(confounder_setting == "nonzero", out_relationship == "interaction", sample_size == 1000) %>% 
+  dplyr::select(-causal_gps_default) %>% 
+  tidyr::pivot_longer(c("linear", "linear_wht", "gam", "gam_wht", "change_pnt", "causalGPS", "true_fit")) %>%
+  mutate(name = factor(name, levels = c("linear", "linear_wht", "gam", "gam_wht", "causalGPS", "change_model", "change_pnt", "true_fit"))) %>% 
+  data.table()
+
+pred_summary <-
+  pred_plot[,.(mean = mean(value),
+               lower = quantile(value, 0.025),
+               upper = quantile(value, 0.975)), by=.(exposure, gps_mod, sample_size, confounder_setting, out_relationship, name)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+# Get a sample of predictions to plot
+pred_sample <- 
+  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
+
+
+gg_trace_plot_interaction <- 
+  ggplot() +
+  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
+  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
+  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +
+  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
+  labs(x = "Exposure", y = "Response", title = "ERC curve in simple covariate setting with interaction outcome model") +
+  theme_bw() +
+  coord_cartesian(ylim = c(0, 60)) + 
+  facet_grid(name ~ gps_mod) + 
+  theme(legend.position = "none") + 
+  theme(text = element_text(size = 12))  
+
+gg_trace_plot_interaction
+
+```
+
+\newpage
+### Testing results
+This can be ignored for now
+
+```{r, eval = F}
+sample_size = 10000
+cf <- mvrnorm(n = sample_size,
+                      mu = rep(0, 4),
+                      Sigma = diag(4))
+        cf5 <- sample(c((-2):2), sample_size, replace = T)
+        cf6 <- runif(sample_size, min = -3, max = 3)
+confounders = cbind(cf, cf5, cf6)
+colnames(confounders) = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+cf <- confounders
+x = 9 * cov_function(confounders) + 18 + rnorm(sample_size, mean = 0, sd = sqrt(10))
+exp_frame = data.frame(confounders, exposure = 9 * cov_function(confounders) + 18 + rnorm(sample_size, mean = 0, sd = sqrt(10))) %>% filter(exposure > 0)
+
+exposure = exp_frame$exposure
+cf = as.matrix(exp_frame[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")])
+transformed_exp = 3 * log(exposure + 1)
+Y = transformed_exp
+Y = Y + as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(cf) - 
+                             transformed_exp*(-0.1 * cf[, 1] + 0.1 * cf[, 3]^2 + 0.1*cf[, 4] + 0.1*cf[, 5]) + rnorm(length(exposure), mean = 0, sd = 10))
+data_example 
+exposure_relationship = "sublinear"
+gam_fit <- mgcv::gam(Y ~ s(exposure) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, family = family)
+
+data_prediction <- 
+    rbindlist(lapply(seq(0, 20, length.out = discrete_points), function(pot_exp) {
+      potential_data <- cbind(data.frame(cf), exposure = pot_exp)
+      
+      # Add on exposure effect depending on relationship
+      if (exposure_relationship == "linear") {
+        potential_data$transformed_exp <- potential_data$exposure
+        Y = potential_data$transformed_exp
+      } else if (exposure_relationship == "sublinear") {
+        potential_data$transformed_exp = 3 * log(potential_data$exposure + 1)
+        Y = potential_data$transformed_exp
+      } else if (exposure_relationship == "threshold") {
+        # Set threshold at 5
+        thresh_exp <- potential_data$exposure 
+        thresh_exp[thresh_exp <= 5] <- 0
+        thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
+        potential_data$transformed_exp <- 1.5 * thresh_exp
+        Y = Y + thresh_exp
+      }
+      
+      # Add on effect of the confounders
+      if (outcome_relationship == "linear") {
+        Y = Y + as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)))
+      } else if (outcome_relationship == "interaction") {
+        # problem with the threshold exposure scenario happening 
+        Y = Y + as.numeric(20 - c(2, 2, 3, -1, -2, -2) %*% t(dplyr::select(potential_data, cf1, cf2, cf3, cf4, cf5, cf6)) - 
+                             potential_data$transformed_exp*(-0.1 * potential_data$cf1 + 0.1 * potential_data$cf3^2 + 0.1*potential_data$cf4 + 0.1*potential_data$cf5))
+      } else {
+        stop("Outcome relationship for now is only between linear and interaction")
+      }
+      
+      # # Add on exposure effect
+      # if (exposure_relationship == "linear") {
+      #   Y = Y + potential_data$exposure
+      # } else if (exposure_relationship == "sublinear") {
+      #   Y = Y + 8 * log10(potential_data$exposure + 1)
+      # } else if (exposure_relationship == "threshold") {
+      #   # Set threshold at 5
+      #   thresh_exp <- potential_data$exposure 
+      #   thresh_exp[thresh_exp <= 5] <- 0
+      #   thresh_exp[thresh_exp > 5] <- thresh_exp[thresh_exp > 5] - 5
+      #   Y = Y + thresh_exp
+      # }
+      
+      # Fit each model and take mean for ERC
+      potential_outcome <- 
+        potential_data %>% 
+        mutate(gam_model = predict(gam_fit, newdata = potential_data, type = "response"),
+               true_fit = Y) %>% 
+        dplyr::select(exposure, gam_model, true_fit) %>% 
+        summarize_all(mean) %>% 
+        data.table()
+      return(potential_outcome)
+    }))
+
+plot_fits <- 
+    data_prediction %>% 
+    pivot_longer(c("gam_model", "true_fit"), names_to = "model", values_to = "prediction") %>%
+    arrange(exposure) %>%
+    ggplot(aes(x = exposure, y = prediction, color = model, linetype = model)) +
+    geom_line() +
+    labs(x = "Exposure concentration", y = "Relative risk of death")
+
+
+
+
+df <- 
+  data.frame(exposure = seq(0, 20, length.out = 100)) %>% 
+  mutate(outcome = 3 * log(exposure + 1))
+
+gam_fit <- gam::gam(outcome ~ s(exposure, df = 4), data = df, family = "gaussian")
+plot(mgcv::gam(outcome ~ s(exposure), data = df))
+
+
+```
+
+
+
+\newpage
+
+#### Threshold
+
+
+```{r, eval = F}
+plot_data_threshold <- 
+  metrics_threshold %>% 
+  mutate(absolute_bias = abs(bias)) %>% 
+  tidyr::pivot_longer(c("bias", "absolute_bias", "mse")) %>% 
+  mutate(model = factor(model, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_default", "causal_gps_tuned", "change_model", "propensity_change")))  %>% 
+  dplyr::group_by(model, gps_mod, sample_size, confounder_setting, out_relationship, name) %>% 
+  dplyr::summarize(mean = mean(value), 
+                   lower = quantile(value, 0.05),
+                   upper = quantile(value, 0.95)) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction")))
+
+# Plot results from linear
+
+plot_bias_threshold <- 
+  plot_data_threshold %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "bias") %>% 
+  filter(sample_size == 10000, confounder_setting == "simple") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  #scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_wrap(~ out_relationship) + 
+  labs(y = "Bias", x = "Confounding Scenario", title = paste("Bias with linear exposure-outcome relationship"))
+
+
+plot_abs_bias_threshold <- 
+  plot_data_threshold %>% 
+  filter(model != "causal_gps_default") %>% 
+  filter(name == "absolute_bias") %>% 
+  filter(sample_size == 10000, confounder_setting == "simple") %>% 
+  ggplot() + 
+  geom_pointrange(aes(y = mean, ymin = lower, ymax = upper, x = factor(gps_mod), color = model), position = position_dodge(.6)) +
+  geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+  labs(x = "Scenario", y = "Value") + 
+  scale_y_continuous(trans='log10') + 
+  theme_bw() + 
+  #coord_cartesian(ylim = c(-15, 15)) + 
+  facet_wrap(~ out_relationship) + 
+    labs(y = "Bias", x = "Confounding Scenario", title = paste("Absolute bias with linear exposure-outcome relationship"))
+
+plot_bias_threshold
+plot_abs_bias_threshold
+
+# Now make prediction plots (or trace plots)
+pred_plot <-
+  predictions_threshold %>%
+  filter(confounder_setting == "simple", out_relationship == "interaction", sample_size == 1000) %>% 
+  dplyr::select(-causal_gps_default) %>% 
+  tidyr::pivot_longer(c("linear_model", "linear_gps", "gam_model", "gam_gps", "change_model", "causal_gps_tuned", "true_fit")) %>%
+  mutate(name = factor(name, levels = c("linear_model", "linear_gps", "gam_model", "gam_gps", "causal_gps_tuned", "change_model", "propensity_change", "true_fit"))) %>% 
+  data.table()
+
+pred_summary <-
+  pred_plot[,.(mean = mean(value),
+               lower = quantile(value, 0.05),
+               upper = quantile(value, 0.95)), by=.(exposure, gps_mod, sample_size, confounder_setting, out_relationship, name)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+# Get a sample of predictions to plot
+pred_sample <- 
+  pred_plot[sim %in% sample(1:20, 10, replace = F)] %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  data.table()
+
+true_fit_plot <- pred_summary[name == "true_fit"] %>% dplyr::select(-name) %>% data.table()
+
+
+gg_trace_plot_interaction <- 
+  ggplot() +
+  geom_line(data = pred_summary[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = mean), linetype = "solid") +
+  geom_line(data = true_fit_plot[sample_size == 1000], aes(x = exposure, y = mean), color = "black", linetype = "dashed") +
+  geom_line(data = pred_sample[name != "true_fit" & sample_size == 1000], aes(x = exposure, y = value, color = factor(sim)), linetype = "solid", alpha = 0.5) + 
+  scale_color_manual(values = c("gray", "gray","gray", "gray", "gray", "gray", "gray", "gray", "gray", "gray")) + 
+  labs(x = "Exposure", y = "Response") +
+  theme_bw() +
+  coord_cartesian(ylim = c(-20, 20)) + 
+  facet_grid(name ~ gps_mod) + 
+  theme(legend.position = "none") + 
+  theme(text = element_text(size = 16))  
+
+gg_trace_plot_interaction
+
+```
+
+
+
+### How does sample size affect our estimates? 
+
+In general, increased sample size leads to improved covariate balance when fitting causal inference methods. It also leads to improvements in fit for methods that use nonparametric 
+
+
+
+### How do different covariate distributions affect estimation of ERC?
+
+We are comparing how either a simple covariate distribution or a more complex covariate distribution affects covariate balance first. In the simple case all covariates are uncorrelated and centered at zero. In more complex setting they are not cenetered at zero and $C_1, C_2, C_3, C_4$ are correlated. 
+
+We first investigate how it affects covariate balance. In general, we notice that more complex confounder distributions result in larger covariate imbalances in the nonlinear and interaction settings in our simulation, and therefore reduce the covariate balance for all methods. In particular, this is the case when fitting under the matching framework, which is not very surprising given unlike the IPW weighting it is not targetting covariate balance. (note which type of covariate balance we are using in this problem). 
+
+Now we can assess how these different covariate distributions affect the bias of our estimates
+
+## How do different covariate-oucome relationships affect estimation fo the ERC
+
+Between a linear or interaction effect we don't have a different in covariate balance, given that the covariate balance is didcated between the covariates and the outcome 
+
+```{r, eval = F}
+exp_relationship = "linear"
+adjust_confounder = T
+time_stamp = "linear_all"
+replicates = 100
+
+# Grab repo directory whether on the cluster or computer
+if (Sys.getenv("USER") == "mcork") {
+  repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
+} else if (Sys.getenv("USER") == "michaelcork") {
+  repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
+}
+
+results_dir <- paste0(repo_dir, "results/",
+                      exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
+
+aggregated_results <- readRDS(file = paste0(results_dir, "aggregated_results.RDS"))
+
+correlation <- aggregated_results$correlation
+metrics <- aggregated_results$metrics
+predictions <- aggregated_results$predictions
+
+
+# First look at covariate balance
+mean_abs_cor <- 
+  correlation %>% 
+  group_by(method, delta, gps_mod, sample_size, sim, confounder_setting, out_relationship) %>% 
+  dplyr::summarize(pre_cor = mean(pre_cor), post_cor = mean(post_cor)) %>% 
+  mutate(covariate = "mean") %>% 
+  ungroup()
+
+# Add mean to correlation table
+correlation <- 
+  rbind(correlation, mean_abs_cor) %>% 
+  mutate(covariate = factor(covariate, levels = rev(c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6", "mean"))))
+
+
+
+gg_correlation_ipw <-
+  correlation %>% 
+  filter(sample_size == 1000, out_relationship == "linear") %>% 
+  filter(method == "ipw", confounder_setting %in% c("simple", "complex")) %>% 
+  pivot_longer(c("pre_cor", "post_cor"), names_to = "correlation") %>% 
+  group_by(gps_mod, covariate, correlation, out_relationship, confounder_setting) %>% 
+  dplyr::summarize(mean = mean(value),
+                   lower = quantile(value, 0.05), 
+                   upper = quantile(value, 0.95)) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  ggplot(aes(x = covariate, y = mean, ymin = lower, ymax = upper, color = correlation, group = correlation)) +
+  geom_hline(aes(yintercept = 0.1)) + 
+  geom_errorbar(width = 0.5, position = position_dodge(width = 0.7)) +
+  geom_point(position = position_dodge(width = 0.7)) + 
+  #geom_line(size = 0.3) +
+  theme_bw() +
+  coord_flip() + 
+  facet_grid(confounder_setting ~ gps_mod) + 
+  labs(y = "Absolute correlation", x = "Covariate", title = "Covariate balance using IPW and entropy based weights")
+
+gg_correlation_tuned <-
+  correlation %>% 
+  filter(sample_size == 1000, out_relationship == "linear") %>% 
+  filter(method == "causal_gps_tuned", confounder_setting %in% c("simple", "complex")) %>% 
+  mutate(confounder_setting = factor(confounder_setting, levels = c("simple", "complex"))) %>% 
+  pivot_longer(c("pre_cor", "post_cor"), names_to = "correlation") %>% 
+  group_by(gps_mod, covariate, correlation, out_relationship, confounder_setting) %>% 
+  dplyr::summarize(mean = mean(value),
+                   lower = quantile(value, 0.05), 
+                   upper = quantile(value, 0.95)) %>% 
+  mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
+                                    gps_mod == 2 ~ "heavy tail", 
+                                    gps_mod == 3 ~ "nonlinear", 
+                                    gps_mod == 4 ~ "interaction"), levels = c("linear", "heavy tail", "nonlinear", "interaction"))) %>% 
+  ggplot(aes(x = covariate, y = mean, ymin = lower, ymax = upper, color = correlation, group = correlation)) +
+  geom_hline(aes(yintercept = 0.1)) + 
+  geom_errorbar(width = 0.5, position = position_dodge(width = 0.7)) +
+  geom_point(position = position_dodge(width = 0.7)) + 
+  #geom_line(size = 0.3) +
+  theme_bw() +
+  coord_flip() + 
+  facet_grid(confounder_setting ~ gps_mod) + 
+  labs(y = "Absolute correlation", x = "Covariate", title = "Covariate balance using IPW and entropy based weights")
+
+
+gg_correlation_tuned
+
+
+
+
+
+```
+
+
+How do different covariate effects on the outcome impact estimation of the ERC (covariate-outcome effect)? How does 
+
+How do different relationships between the exposure and outcome affect estimation of the ERC (exposure effect)?
+How do different propensity score models impact estimation of the ERC?
+How do different covariate effects on the outcome impact estimation of the ERC (covariate-outcome effect)?
+How do different covariate distributions affect estimation of ERC?
+How does sample size impact estimation of the ERC?

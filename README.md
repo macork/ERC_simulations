@@ -4,7 +4,11 @@ Code for simulations for Michael Cork paper #1: Curving emissions: Comparing met
 This respository contains code used to conduct simulation studies comparing methods for exposure-response curves. It also contains a data application to the Medicare data set. 
 
 The main code scripts are as follows:
-`0_launch.jobs.sh` is script to launch jobs on the FASSE cluster 
+* `0_launch.jobs.sh` is script to launch jobs on the FASSE cluster
+* `1_run_simulation.R` is script to launch simulation for one exposure-outcome model, which launches 100 jobs
+* `2_aggregate_simulation.R` is script bind together 100 simulation results to calculate predictions and metrics
+* `3_produce_figures.R` is script to produce figures to inspect model results
+* `4_paper_figures.R` is script to produce figures used in the paper
 
 There are three main code directories in this repo:
 1) Simulation studies which has the code 

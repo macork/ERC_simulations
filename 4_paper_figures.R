@@ -21,6 +21,7 @@ figure_dir <- paste0(repo_dir, "figures/")
 exp_relationship = "linear"
 adjust_confounder = T
 time_stamp = "first_draft2"
+time_stamp = "test_first_submission"
 replicates = 100
 
 results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
