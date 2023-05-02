@@ -1,4 +1,4 @@
-# What is happening here? Not really sure
+# Function to fit entropy weighting --------------------------------------------------------
 invisible(capture.output({
   obj_EB = Rcpp::cppFunction("
                              double obj_EB(Eigen::Map<Eigen::MatrixXd> C,
@@ -21,6 +21,7 @@ grad_EB = Rcpp::cppFunction("
                             }", depends = "RcppEigen")
 }))
 
+# Function for entropy weighting
 ebal <- function(treatment, # vector or matrix of 1 or several treatments
                  covar_matrix, # matrix of covariates (categories as indicators)
                  t_moments = 1, # balancing moments for treatment skew

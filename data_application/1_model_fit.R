@@ -100,7 +100,6 @@ if (!only_post) {
     
     # Save entropy weight output
     saveRDS(data_ent, file = paste0(out_dir, "entropy_weights.RDS"))
-    #saveRDS(ent_weights, file = paste0(out_dir, "entropy_weights_raw.RDS"))
     
     # Now join entropy weights to original dataset (given you matched on zip and year only)
     data_ent_join <- data_ent[, c("zip", "year", "ent_weight")]
@@ -140,7 +139,7 @@ if (!only_post) {
   data_confounders <- data.frame(data_ent %>% select(all_of(confounders))) %>% select(-year)
   
   # Source function to fit causalGPS by year
-  source(paste0(proj_dir, "/ERC_simulation/Simulation_studies/functions/data_application_functions.R"))
+  source(paste0(proj_dir, "/ERC_simulation/Simulation_studies/data_application/functions/fit_causalGPS_by_year.R"))
   
   # Now fit CausalGPS model
   grid_min_results <- 

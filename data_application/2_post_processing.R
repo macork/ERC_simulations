@@ -1,4 +1,7 @@
-# Script to run after models are fit, aggregates and creates curve
+# Script to run after models are fit, aggregates and creates plots
+rm(list = ls())
+
+# Load libraries
 library(data.table)
 library(tidyverse)
 library(WeightIt)
@@ -31,14 +34,14 @@ model_dir <- paste0(proj_dir, "/Simulation_studies/data_application/model_fits/"
 data <- readRDS(paste0(proj_dir, "/Medicare_data/model_input/", data_flag, "/input_data.RDS"))
 
 #  If needed, load models
-# linear_fit <- readRDS(file = paste0(model_dir, "linear.RDS"))
-# gam_fit <- readRDS(file = paste0(model_dir, "gam.RDS"))
-# linear_ent <- readRDS(file = paste0(model_dir, "linear_ent.RDS"))
-# gam_ent <- readRDS(file = paste0(model_dir, "gam_ent.RDS"))
-# 
-# # Load causal fit 
-# pseudo_pop <- readRDS(file = paste0(model_dir, "pseudo_pop.RDS"))
-# causal_gps <- readRDS(file = paste0(model_dir, "causal_fit.RDS"))
+linear_fit <- readRDS(file = paste0(model_dir, "linear.RDS"))
+gam_fit <- readRDS(file = paste0(model_dir, "gam.RDS"))
+linear_ent <- readRDS(file = paste0(model_dir, "linear_ent.RDS"))
+gam_ent <- readRDS(file = paste0(model_dir, "gam_ent.RDS"))
+
+# Load causal fit
+pseudo_pop <- readRDS(file = paste0(model_dir, "pseudo_pop.RDS"))
+causal_gps <- readRDS(file = paste0(model_dir, "causal_fit.RDS"))
 
 model_types <- c("linear_model", "gam_model", "linear_ent", "gam_ent", "causal_model")
 
@@ -90,8 +93,7 @@ relative_rate_plot <-
 ggsave(relative_rate_plot, file = paste0(model_dir, "relative_rate_plot.pdf"))
 
 # Load contrast data (plots contrast of entire population at 12 ug/m3 to lower standard)
-contrast_data <- readRDS(file = paste0(model_dir, "contrast_data.RDS"))
-
+#contrast_data <- readRDS(file = paste0(model_dir, "contrast_data.RDS"))
 
 # Load boot data for uncertainty quantification --------------------------------------------------
 # See size of m out of n bootstrap
@@ -115,9 +117,6 @@ mort_se <-
   mutate(prediction = log(prediction)) %>% # Put back into log space
   summarize(var = var(prediction) * m/n) %>% # Scale variance, get se
   mutate(se = sqrt(var))
-
-# Make sure correct name is used
-#mort_se <- rename(mort_se, pm25 = pm25_ensemble)
 
 # Plot of mortality rate with standard errors
 plot_label <- c("causal_model" = "CausalGPS", "gam_ent" = "GAM entropy", "gam_model" = "GAM",
@@ -149,7 +148,7 @@ ggsave(gg_mort_se,
        dpi = 400)
 
 # Now calculate uncertainty for relative risk 
-# scramble index so when dividing by risk at 12 we geg uncertainty interval at 12 as well 
+# scramble index so when dividing by risk at 12 we get uncertainty interval at 12 as well 
 index <- sample(1:100, replace = F)
 pm_combaritor <- data_prediction[twelve_index, pm25] # pm comparitor, should be very close to 12
 
@@ -180,25 +179,22 @@ relative_rate_se <-
   summarize(var = var(relative_rate) * m/n) %>%
   mutate(se = sqrt(var))
 
+# plot of gg_relative_se
 gg_relative_se <- 
   relative_rate_data %>%
   left_join(relative_rate_se, by = c("pm25", "model")) %>%
   mutate(upper = exp(prediction + 1.96*se), 
          lower = exp(prediction - 1.96*se)) %>%
   mutate(prediction = exp(prediction)) %>%
-  #filter(model != "causal_model") %>%
   ggplot(aes(x = pm25, y = prediction, color = model, linetype = model)) +
   geom_line() +
   geom_ribbon((aes(ymin = lower, ymax = upper, fill = model, linetype = model, color = model)), alpha = 0.2) + 
-  #coord_cartesian(xlim = c(6, 12)) + 
   coord_cartesian(xlim = c(6, 12), ylim = c(0.8, 1.05)) + 
   labs(x = "Annual Average PM2.5", y = "Relative mortality rate") + 
   theme_bw(base_size = 16) + 
   scale_fill_discrete("", labels = plot_label, guide = guide_legend(reverse=TRUE)) + 
   scale_linetype_discrete("", labels = plot_label, guide = guide_legend(reverse=TRUE)) + 
-  scale_color_discrete("", labels = plot_label, guide = guide_legend(reverse=TRUE)) + 
-  #scale_x_continuous(breaks = c(4, 6, 8, 10, 12)) + 
-  #coord_cartesian(xlim = c(4, 12), ylim = c(0.7, 1.2)) + 
+  scale_color_discrete("", labels = plot_label, guide = guide_legend(reverse=TRUE)) +
   theme(legend.text=element_text(size=16),
         legend.position=c(.85,.25))
 
@@ -206,40 +202,6 @@ ggsave(gg_relative_se,
        file = paste0(model_dir, "relative_se_present.png"), 
        width = 10, height = 7,
        dpi = 400)
-
-
-# # Now generate standard error of contrasts (for now holding off on)
-# contrast_boot <- 
-#   rbindlist(lapply(1:100, function(i){
-#     boot_data <- readRDS(paste0(boot_dir, "/", i, "/contrast_data.RDS"))
-#     boot_data <- data.table(boot_data)
-#     return(boot_data)
-#   }))
-# 
-# contrast_se <- 
-#   contrast_boot %>%
-#   pivot_longer(-contrast, "model", "value") %>%
-#   group_by(contrast, model) %>% 
-#   summarize(var = var(value) * m/n) %>%
-#   mutate(se = sqrt(var))
-# 
-# gg_contrast_se <- 
-#   contrast_data %>%
-#   pivot_longer(-contrast, "model", "value") %>%
-#   left_join(contrast_se) %>%
-#   mutate(upper = value + 1.96*se, 
-#          lower = value - 1.96*se) %>%
-#   ggplot(aes(x = contrast, y = 100 * value, color = model)) +
-#   #geom_point(size = 0.2, position = position_dodge(width = 0.7)) +
-#   geom_pointrange(aes(ymin = 100 * lower, ymax = 100 * upper, fill = model), 
-#                   size = 0.25, position = position_dodge(width = 0.15)) + 
-#   theme_bw() + 
-#   scale_fill_discrete("", labels = plot_label, guide = guide_legend(reverse=TRUE)) + 
-#   scale_linetype_discrete("", labels = plot_label, guide = guide_legend(reverse=TRUE)) + 
-#   scale_color_discrete("", labels = plot_label, guide = guide_legend(reverse=TRUE)) + 
-#   labs(x = "Contrast", y = "Percent reduction in mortality")
-# 
-# ggsave(gg_contrast_se, file = paste0(model_dir, "contrast_se.pdf"), width = 12, height = 8)
 
 
 # Create plots of covariate balance ------------------------------------------------------
@@ -253,7 +215,8 @@ entropy_data <- readRDS(file = paste0(model_dir, "entropy_weights.RDS"))
 pseudo_pop <- readRDS(file = paste0(model_dir, "pseudo_pop.RDS"))
 
 
-# Arrange, mostly to make sure these data sets are identical (and they are)
+# Arrange entropy and pseudo population, should be same dataset with only different weights
+# This is to make sure they are the same
 arranged_psuedo <- pseudo_pop %>% arrange(Y, year) %>% rename(pm25 = w) %>% 
   select(!!! c(confounders, "pm25", "counter_weight")) %>% data.table()
 arranged_entropy <- entropy_data %>% arrange(zip, year) %>%  select(!!! c(confounders, "pm25", "ent_weight")) %>% data.table()
@@ -333,10 +296,10 @@ region_breaks <- data.table(var = "region",
                                          "region_WEST", "region_MIDWEST"))
 year_breaks <- data.table(var = "year", variable = paste0("year_", 2000:2016))
 
+# Create way to merge all factors together
 merge_factors <- 
   rbind(data.table(var = confounders, variable = confounders),
         region_breaks, year_breaks)
-
 
 balance_merged <- 
   balance_table %>% 
@@ -344,6 +307,7 @@ balance_merged <-
   group_by(var, type) %>%
   summarize(corr = mean(corr))
 
+# Order by decreasing unadjusted
 order_var <- 
   balance_merged %>%
   filter(type == "Unadjusted") %>% 
@@ -356,7 +320,7 @@ mean_abs_corr <-
   summarize(abs_cor = mean(corr)) %>% 
   data.table()
   
-  
+# Label covariates
 cov_label = rev(c("% Below High School Education",
               "Summer Humidity",
               "% Black",
@@ -374,6 +338,7 @@ cov_label = rev(c("% Below High School Education",
               "Winter Humidty", 
               "Mean BMI"))
 
+# Create balance plot
 balance_merged_plot <- 
   balance_merged %>% 
   mutate(var = factor(var, levels = order_var, labels = cov_label)) %>% 
@@ -403,78 +368,35 @@ ggsave(balance_merged_plot,
        file = paste0(model_dir, "balance_plot.png"), width = 10, height = 10,
        dpi = 400)
 
-
-
-# Continuous covs
-con_covs <- entropy_weights[, 2:17]
-# Get covariate balance pre and post (can take)
-post_weight <- cov.wt(x = con_covs,
-                      wt = entropy_weights$ent_weight, TRUE)$cor[, 1]
-pre_weight <- cor(entropy_weights[, 1:{ncol(entropy_weights)-1}])[, 1]
-
-# Write function to get pre and post weights
-
-post_weight <- post_weight[-1] # Remove pm
-post_dt <- 
-  data.table(value = post_weight) %>%
-  mutate(variable = names(post_weight), cor = "adjusted")
-
-pre_weight <- pre_weight[-1] # Remove pm
-pre_dt <- 
-  data.table(value = pre_weight) %>%
-  mutate(variable = names(pre_weight), cor = "original") %>%
-  arrange(value)
-
-correlation_table <- rbind(pre_dt, post_dt)
-
-# Combine factors for plot
-region_breaks <- data.table("region", c("regionSOUTH", "regionNORTHEAST", "regionWEST", "regionSOUTH"))
-year_breaks <- data.table("year", paste0("year", 2000:2016))
-follow_breaks <- data.table("follow_up_year", paste0("followup_year", 1:18))
-entry_breaks <- data.table("entry_age_break", paste0("entry_age_break", c(1, 3, 5, 7)))
-race_breaks <- data.table("race", paste0("race", 1:5))
-factor_index <- 
-  rbind(data.table(c("education", "medianhousevalue", "medhouseholdincome", "poverty",
-             "pct_owner_occ", "dual", "sex"), 
-           c("education", "medianhousevalue", "medhouseholdincome", "poverty",
-                                                "pct_owner_occ", "dual1", "sex1")),
-      region_breaks, year_breaks, follow_breaks, entry_breaks, race_breaks)
-
-names(factor_index) = c("var", "variable")
-
-correlation_table_merged <- 
-  correlation_table %>% 
-  left_join(factor_index) %>% 
-  group_by(var, cor) %>%
-  summarize(value = mean(value))
-
-gg_correlation_entropy <-
-  correlation_table_merged %>% 
-  mutate(cor = factor(cor, levels = c("original", "adjusted"))) %>%
-  mutate(value = abs(value)) %>%
-  mutate(var = factor(var, levels = c("sex", "region", "year", "follow_up_year", 
-                                      "race", "dual", 
-                                      "entry_age_break", "poverty", 
-                                      "medhouseholdincome", "medianhousevalue", "pct_owner_occ",
-                                      "education"))) %>%
-  ggplot(aes(x = var, y = value, color = cor, group = cor)) +
-  geom_hline(aes(yintercept = 0.1)) + 
-  geom_point() + 
-  geom_line(linewidth = 0.3) +
-  theme_bw(base_size = 14) + 
-  theme(legend.text=element_text(size=12)) +
-  coord_flip() + 
-  scale_color_discrete("Correlation") + 
-  labs(y = "Absolute correlation", x = "Covariates", title = "Covariate Balance Test (entropy based weights)")
-
-ggsave(gg_correlation_entropy, file = paste0(model_dir, "correlation_entropy.pdf"),
-       width = 12, height = 8)
-
-# Now plot covariate balance for causalGPS
-pseudo_pop <- readRDS(file = paste0(model_dir, "pseudo_pop.RDS"))
-balance_gps <- plot(pseudo_pop) + scale_color_discrete("Correlation") + 
-  labs(title = "Covariate Balance Test (CausalGPS)") + 
-  theme_bw(base_size = 14) + 
-  theme(legend.text=element_text(size=12))
-ggsave(balance_gps, file = paste0(model_dir, "balance_gps.pdf"),
-       width = 12, height = 8)
+# # Plots of contrasts (omit for now)
+# contrast_boot <- 
+#   rbindlist(lapply(1:100, function(i){
+#     boot_data <- readRDS(paste0(boot_dir, "/", i, "/contrast_data.RDS"))
+#     boot_data <- data.table(boot_data)
+#     return(boot_data)
+#   }))
+# 
+# contrast_se <- 
+#   contrast_boot %>%
+#   pivot_longer(-contrast, "model", "value") %>%
+#   group_by(contrast, model) %>% 
+#   summarize(var = var(value) * m/n) %>%
+#   mutate(se = sqrt(var))
+# 
+# gg_contrast_se <- 
+#   contrast_data %>%
+#   pivot_longer(-contrast, "model", "value") %>%
+#   left_join(contrast_se) %>%
+#   mutate(upper = value + 1.96*se, 
+#          lower = value - 1.96*se) %>%
+#   ggplot(aes(x = contrast, y = 100 * value, color = model)) +
+#   #geom_point(size = 0.2, position = position_dodge(width = 0.7)) +
+#   geom_pointrange(aes(ymin = 100 * lower, ymax = 100 * upper, fill = model), 
+#                   size = 0.25, position = position_dodge(width = 0.15)) + 
+#   theme_bw() + 
+#   scale_fill_discrete("", labels = plot_label, guide = guide_legend(reverse=TRUE)) + 
+#   scale_linetype_discrete("", labels = plot_label, guide = guide_legend(reverse=TRUE)) + 
+#   scale_color_discrete("", labels = plot_label, guide = guide_legend(reverse=TRUE)) + 
+#   labs(x = "Contrast", y = "Percent reduction in mortality")
+# 
+# ggsave(gg_contrast_se, file = paste0(model_dir, "contrast_se.pdf"), width = 12, height = 8)
