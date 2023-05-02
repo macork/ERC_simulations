@@ -282,7 +282,7 @@ Finally, we can fit a threshold model, where the relationship between exposure a
 $$
 \begin{split} 
 Y|E,C &\sim N(\mu(E, C), 10^2) \\
-\mu(E, C) &= 20 + 5*E[E > 8] - (2, 2, 3, -1, 2, 2)*C 
+\mu(E, C) &= 20 + E[E > 5] - (2, 2, 3, -1, 2, 2)*C 
 \end{split}
 $$
 
