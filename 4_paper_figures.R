@@ -14,7 +14,8 @@ if (Sys.getenv("USER") == "mcork") {
 }
 
 # set figures directory
-figure_dir <- paste0(repo_dir, "figures/")
+#figure_dir <- paste0(repo_dir, "figures/")
+figure_dir <- paste0(repo_dir, "new_figures/")
 
 # Load data for each model selection ------------------------------------------------
 # First load the linear model example
@@ -22,6 +23,7 @@ exp_relationship = "linear"
 adjust_confounder = T
 time_stamp = "first_draft2"
 time_stamp = "test_first_submission"
+time_stamp = "first_submission2"
 replicates = 100
 
 results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
@@ -73,6 +75,7 @@ predictions_linear <-
 exp_relationship = "sublinear"
 adjust_confounder = T
 time_stamp = "first_draft"
+time_stamp = "first_submission2"
 replicates = 100
 
 results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
@@ -117,7 +120,7 @@ predictions_sublinear <-
 #load threshold ----------------------------------------------------------------------------------------
 exp_relationship = "threshold"
 adjust_confounder = T
-time_stamp = "first_draft2"
+time_stamp = "first_submission2"
 replicates = 100
 
 results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")

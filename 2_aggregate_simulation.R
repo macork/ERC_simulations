@@ -5,9 +5,9 @@ library(tidyverse)
 library(data.table)
 
 # set model tag and relationship
-exp_relationship = "linear"
+exp_relationship = "threshold"
 adjust_confounder = T
-model_tag = "test_first_submission"
+model_tag = "first_submission2"
 replicates = 100
 
 # Grab repo directory (based on either local or on cluster)

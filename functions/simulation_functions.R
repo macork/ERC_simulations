@@ -163,53 +163,54 @@ metrics_from_data <- function(exposure = NA,
       
       # Now fit most optimized causal pathway
       # Set grid to tune over 
-      nrounds = 300
+      #nrounds = 300
       tune_grid <- expand.grid(
-        nrounds = nrounds,
-        eta = c(0.025, 0.05, 0.1),
+        nrounds = c(100),
+        eta = c(0.05, 0.1, 0.2, 0.3),
         max_depth = c(2, 3),
-        delta = seq(0.2, 2, by = 0.2)
+        delta = seq(1, 3, by = 0.1)
       )
       
       # Make list to pass to parLapply
       tune_grid_list <- as.list(as.data.frame(t(tune_grid)))
       
       # Wrapper function for running causalGPS
-      wrapper_func <- function(tune_grid){
-        pseudo_pop <- generate_pseudo_pop(data_ent$Y,
-                                          data_ent$exposure,
-                                          data.frame(data_ent[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")]),
-                                          ci_appr = "matching",
-                                          pred_model = "sl",
-                                          gps_model = "parametric",
-                                          use_cov_transform = FALSE,
-                                          transformers = list("pow2", "pow3", "abs", "scale"),
-                                          trim_quantiles = c(0,1),
-                                          optimized_compile = T,
-                                          sl_lib = c("m_xgboost"),
-                                          params = list(xgb_rounds = tune_grid[[1]],
-                                                        xgb_eta = tune_grid[[2]],
-                                                        xgb_max_depth = tune_grid[[3]]),
-                                          covar_bl_method = "absolute",
-                                          covar_bl_trs = 0.1,
-                                          covar_bl_trs_type = "mean",
-                                          max_attempt = 1,
-                                          matching_fun = "matching_l1",
-                                          delta_n = tune_grid[[4]],
-                                          scale = 1,
-                                          nthread = 2)
+      wrapper_func <- function(tune_param){
+        pseudo_pop_tune <- generate_pseudo_pop(data_ent$Y,
+                                               data_ent$exposure,
+                                               data.frame(data_ent[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")]),
+                                               ci_appr = "matching",
+                                               pred_model = "sl",
+                                               gps_model = "parametric",
+                                               use_cov_transform = FALSE,
+                                               transformers = list("pow2", "pow3", "abs", "scale"),
+                                               trim_quantiles = c(0.01, 0.99),
+                                               optimized_compile = T,
+                                               sl_lib = c("m_xgboost"),
+                                               params = list(xgb_rounds = tune_param[[1]],
+                                                             xgb_eta = tune_param[[2]],
+                                                             xgb_max_depth = tune_param[[3]]),
+                                               covar_bl_method = "absolute",
+                                               covar_bl_trs = 0.1,
+                                               covar_bl_trs_type = "mean",
+                                               max_attempt = 1,
+                                               matching_fun = "matching_l1",
+                                               delta_n = tune_param[[4]],
+                                               scale = 1,
+                                               nthread = 1)
         
         
-        matched_pop <- pseudo_pop$pseudo_pop
+        matched_pop_tune <- pseudo_pop_tune$pseudo_pop
+        
         # Truncate upper 1%
-        matched_pop[counter_weight > quantile(matched_pop$counter_weight, 0.99),
-                    counter_weight := quantile(matched_pop$counter_weight, 0.99)]
+        # matched_pop[counter_weight > quantile(matched_pop$counter_weight, 0.99),
+        #             counter_weight := quantile(matched_pop$counter_weight, 0.99)]
         
         # Now generate covariate balance tab
         balance_table <- 
           bal.tab(w ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6,
-                  data = matched_pop,
-                  weights = matched_pop[["counter_weight"]],
+                  data = matched_pop_tune,
+                  weights = matched_pop_tune$counter_weight,
                   method = "weighting",
                   stats = c("cor"),
                   un = T,
@@ -221,29 +222,34 @@ metrics_from_data <- function(exposure = NA,
         mean_post_cor <- mean(balance_table$Balance$Corr.Adj)
         
         results <- 
-          data.frame(nrounds = tune_grid[[1]], 
-                     eta = tune_grid[[2]],
-                     max_depth = tune_grid[[3]],
-                     delta = tune_grid[[4]],
+          data.frame(nrounds = tune_param[[1]], 
+                     eta = tune_param[[2]],
+                     max_depth = tune_param[[3]],
+                     delta = tune_param[[4]],
                      scale = 1,
                      mean_corr = mean_post_cor,
                      max_corr = max(balance_table$Balance$Corr.Adj))
-        return(list(results, pseudo_pop))
+        return(list(results, matched_pop_tune))
         
       }
       
       # Now iterate through simulation function, bind together results
-      pseudo_pop_list <- lapply(tune_grid_list, wrapper_func)
+      pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 10, wrapper_func)
       corr_search <- do.call("rbind", (lapply(pseudo_pop_list, function(x) x[[1]])))
+      min_corr = corr_search %>% filter(mean_corr == min(mean_corr)) %>% slice_head()
       
       # Extract minimum as your result
-      pseudo_pop_tuned <- pseudo_pop_list[[which.min(corr_search$mean_corr)]][[2]]
+      pseudo_pop_tuned <- wrapper_func(min_corr[1:4])[[2]]
+      
+      # Check that correlation
+      post_cor <- cov.wt(pseudo_pop_tuned[, c("w", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6")], wt = (pseudo_pop_tuned$counter_weight), cor = T)$cor
+      post_cor <- abs(post_cor[-1, 1])
       
       # Now fit semi-parametric here 
       causal_gps_tuned <- 
         mgcv::gam(formula = Y ~ s(w, bs = 'cr', k = 4) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6,
                   family = "gaussian",
-                  data = data.frame(pseudo_pop_tuned$pseudo_pop),
+                  data = data.frame(pseudo_pop_tuned),
                   weights = counter_weight)
     }
     
