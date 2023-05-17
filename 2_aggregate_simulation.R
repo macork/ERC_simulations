@@ -7,7 +7,7 @@ library(data.table)
 # set model tag and relationship
 exp_relationship = "threshold"
 adjust_confounder = T
-model_tag = "first_submission2"
+model_tag = "first_submission4"
 replicates = 100
 
 # Grab repo directory (based on either local or on cluster)

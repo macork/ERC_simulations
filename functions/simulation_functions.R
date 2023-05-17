@@ -234,7 +234,7 @@ metrics_from_data <- function(exposure = NA,
       }
       
       # Now iterate through simulation function, bind together results
-      pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 10, wrapper_func)
+      pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 6, wrapper_func)
       corr_search <- do.call("rbind", (lapply(pseudo_pop_list, function(x) x[[1]])))
       min_corr = corr_search %>% filter(mean_corr == min(mean_corr)) %>% slice_head()
       
