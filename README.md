@@ -1,5 +1,5 @@
 # Simulation_studies
-Code for simulations for Michael Cork paper #1: Curving emissions: Comparing methods for evaluating exposure response curves
+Code for running analysis in: Methods for Estimating the Exposure-Response Curve to Inform the New Safety Standards for Fine Particulate Matter
 
 This respository contains code used to conduct simulation studies comparing methods for exposure-response curves. It also contains a data application to the Medicare data set. 
 
