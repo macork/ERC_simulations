@@ -6,6 +6,7 @@ data/
 *.rst
 *.pdf
 *.html
+markdown_files/*
 results/**/**/sim_final*
 Logs/
 results/

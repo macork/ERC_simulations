@@ -18,16 +18,13 @@ if (Sys.getenv("USER") == "mcork") {
 }
 
 # set figures directory
-#figure_dir <- paste0(repo_dir, "figures/")
-figure_dir <- paste0(repo_dir, "new_figures_update/")
+figure_dir <- paste0(repo_dir, "figures/")
 
 # Load data for each model selection ------------------------------------------------
 # First load the linear model example
 exp_relationship = "linear"
 adjust_confounder = T
-time_stamp = "first_draft2"
-time_stamp = "test_first_submission"
-time_stamp = "first_submission2"
+#time_stamp = "first_draft2"
 time_stamp = "first_submission4" # With trimming in CausalGPS
 replicates = 100
 
@@ -78,7 +75,6 @@ predictions_linear <-
 # load sublinear ----------------------------------------------------------------------------------------
 exp_relationship = "sublinear"
 adjust_confounder = T
-time_stamp = "first_draft"
 time_stamp = "first_submission4"
 replicates = 100
 
