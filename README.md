@@ -10,6 +10,7 @@ The main code scripts are as follows:
 * `3_paper_figures.R` is script to produce figures used in the paper
 * `/functions/` contains scripts for running simulation
 * `/figures/` saves figures used in publication
+* `/markdown_files/` contains scripts used for exploratory data analysis and making additional plots
 
 ## Data application
 Code related to fitting model to Medicare database is found in `/data_application/`
