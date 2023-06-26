@@ -5,6 +5,10 @@ library(tidyverse)
 library(latex2exp)
 library("CausalGPS", lib.loc = "/n/home_fasse/mcork/apps/ERC_simulation/R_4.0.5")
 
+
+#unlink("/n/home_fasse/mcork/apps/ERC_simulation/R_4.0.5/00LOCK-vctrs", recursive = T)
+#install.packages("tidyverse", dependencies = T)
+
 # Set directory --------
 # Grab repo directory whether on the cluster or computer
 if (Sys.getenv("USER") == "mcork") {
@@ -14,7 +18,8 @@ if (Sys.getenv("USER") == "mcork") {
 }
 
 # set figures directory
-figure_dir <- paste0(repo_dir, "figures/")
+#figure_dir <- paste0(repo_dir, "figures/")
+figure_dir <- paste0(repo_dir, "new_figures_update/")
 
 # Load data for each model selection ------------------------------------------------
 # First load the linear model example
@@ -22,6 +27,8 @@ exp_relationship = "linear"
 adjust_confounder = T
 time_stamp = "first_draft2"
 time_stamp = "test_first_submission"
+time_stamp = "first_submission2"
+time_stamp = "first_submission4" # With trimming in CausalGPS
 replicates = 100
 
 results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
@@ -46,10 +53,9 @@ metrics_collapse_linear <-
   metrics_collapse[, .(abs_bias = mean(abs_bias),
                        mse = mean(mse),
                        rmse = mean(rmse)), by = .(model, gps_mod, sample_size, confounder_setting, out_relationship)] %>% 
-  mutate(model = factor(model, levels = model_types))  %>% 
-  mutate(model  = fct_recode(model, linear = "linear_model", linear_ent = "linear_gps", gam = "gam_model", 
-                             gam_ent = "gam_gps", change = "change_model", change_ent = "change_gps",
-                             causalGPS = "causal_gps_tuned")) %>% 
+  mutate(Model = factor(model, levels = model_types, 
+                        labels = c("Linear", "Linear\nentropy", "GAM", "GAM\nentropy", "Change", "Change\nentropy", 
+                                   "causal_default", "CausalGPS")))  %>%
   mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
                                     gps_mod == 2 ~ "heavy tail", 
                                     gps_mod == 3 ~ "nonlinear", 
@@ -64,8 +70,8 @@ levels(metrics_collapse_linear$out_relationship) = c(linear = TeX("$\\mu_{linear
 # Rename predictions to match with new model names
 predictions_linear <- 
   predictions_linear %>% 
-  rename(linear = linear_model, linear_ent = linear_gps, gam = gam_model,
-         gam_ent = gam_gps, causalGPS = causal_gps_tuned, change = change_model, change_ent = change_gps) %>% 
+  rename(linear = linear_model, linear_ent = linear_gps, GAM = gam_model,
+         gam_ent = gam_gps, CausalGPS = causal_gps_tuned, change = change_model, change_ent = change_gps) %>% 
   data.table()
 
 
@@ -73,6 +79,7 @@ predictions_linear <-
 exp_relationship = "sublinear"
 adjust_confounder = T
 time_stamp = "first_draft"
+time_stamp = "first_submission4"
 replicates = 100
 
 results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
@@ -94,10 +101,9 @@ metrics_collapse_sublinear <-
   metrics_collapse[, .(abs_bias = mean(abs_bias),
                        mse = mean(mse),
                        rmse = mean(rmse)), by = .(model, gps_mod, sample_size, confounder_setting, out_relationship)] %>% 
-  mutate(model = factor(model, levels = model_types))  %>% 
-  mutate(model  = fct_recode(model, linear = "linear_model", linear_ent = "linear_gps", gam = "gam_model", 
-                             gam_ent = "gam_gps", change = "change_model", change_ent = "change_gps",
-                             causalGPS = "causal_gps_tuned")) %>% 
+  mutate(Model = factor(model, levels = model_types, 
+                        labels = c("Linear", "Linear\nentropy", "GAM", "GAM\nentropy", "Change", "Change\nentropy", 
+                                   "causal_default", "CausalGPS")))  %>%
   mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
                                     gps_mod == 2 ~ "heavy tail", 
                                     gps_mod == 3 ~ "nonlinear", 
@@ -110,14 +116,14 @@ levels(metrics_collapse_sublinear$out_relationship) = c(linear = TeX("$\\mu_{sub
 
 predictions_sublinear <- 
   predictions_sublinear %>%
-  rename(linear = linear_model, linear_ent = linear_gps, gam = gam_model,
+  rename(linear = linear_model, linear_ent = linear_gps, GAM = gam_model,
          gam_ent = gam_gps, causalGPS = causal_gps_tuned, change = change_model, change_ent = change_gps) %>% 
   data.table()
 
 #load threshold ----------------------------------------------------------------------------------------
 exp_relationship = "threshold"
 adjust_confounder = T
-time_stamp = "first_draft2"
+time_stamp = "first_submission4"
 replicates = 100
 
 results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
@@ -139,10 +145,9 @@ metrics_collapse_threshold <-
   metrics_collapse[, .(abs_bias = mean(abs_bias),
                        mse = mean(mse),
                        rmse = mean(rmse)), by = .(model, gps_mod, sample_size, confounder_setting, out_relationship)] %>% 
-  mutate(model = factor(model, levels = model_types))  %>% 
-  mutate(model  = fct_recode(model, linear = "linear_model", linear_ent = "linear_gps", gam = "gam_model", 
-                             gam_ent = "gam_gps", change = "change_model", change_ent = "change_gps",
-                             causalGPS = "causal_gps_tuned")) %>% 
+  mutate(Model = factor(model, levels = model_types, 
+                        labels = c("Linear", "Linear\nentropy", "GAM", "GAM\nentropy", "Change", "Change\nentropy", 
+                                   "causal_default", "CausalGPS")))  %>%
   mutate(gps_mod = factor(case_when(gps_mod == 1 ~ "linear", 
                                     gps_mod == 2 ~ "heavy tail", 
                                     gps_mod == 3 ~ "nonlinear", 
@@ -156,12 +161,25 @@ levels(metrics_collapse_threshold$out_relationship) = c(linear = TeX("$\\mu_{thr
 
 predictions_threshold <- 
   predictions_threshold %>% 
-  rename(linear = linear_model, linear_ent = linear_gps, gam = gam_model,
+  rename(linear = linear_model, linear_ent = linear_gps, GAM = gam_model,
          gam_ent = gam_gps, causalGPS = causal_gps_tuned, change = change_model, change_ent = change_gps) %>% 
   data.table()
 
 
-# Now make figures 1-3
+# Now make figures 1-3 for supplementary materials ------------------------------------------------------
+# For results section writing out the covariate balance
+mean_abs_cor %>% 
+  filter(correlation == "post_cor", out_relationship == "interaction", confounder_setting == "simple") %>%
+  filter(method %in% c("causal_gps_tuned", "ipw")) %>% 
+  mutate(method = gsub("causal_gps_tuned", "CausalGPS", method)) %>% 
+  mutate(method = gsub("ipw", "Entropy", method)) %>% 
+  group_by(gps_mod, correlation, sample_size, confounder_setting, out_relationship, method) %>% 
+  dplyr::summarize(balance_pct = mean(value < 0.1)) %>% 
+  ungroup() %>% 
+  mutate(confounder_setting = factor(confounder_setting, levels = c("simple", "nonzero"))) %>% 
+  data.table() %>% 
+  group_by(sample_size, correlation, method) %>%
+  summarize(balance = mean(balance_pct))
 
 # Calculate mean absolute correlation
 mean_abs_cor <- 
@@ -203,7 +221,7 @@ balance_figure_1 <-
   scale_color_discrete("") + 
   labs(y = "Proportion of simulations that\nmeet balance threshold", x = "Exposure model") # 
 
-ggsave(balance_figure_1, file = paste0(figure_dir, "fig1_balance.png"),
+ggsave(balance_figure_1, file = paste0(figure_dir, "supp_fig1_balance.png"),
        width = 10, height = 4,  dpi = 400)
 
 # Put together data for correlation figure
@@ -242,8 +260,8 @@ correlation_plot_entropy <-
   facet_wrap(~ gps_mod) + 
   labs(y = "Absolute correlation", x = "Covariate")
 
-ggsave(correlation_plot_entropy, file = paste0(figure_dir, "fig2_correlation_plot_entropy.png"),
-       width = 10, height = 7,  dpi = 400)
+# ggsave(correlation_plot_entropy, file = paste0(figure_dir, "supp_fig2_correlation_plot_entropy.png"),
+#        width = 10, height = 7,  dpi = 400)
 
 # Repeat for CausalGPS package
 correlation_plot_CausalGPS <- 
@@ -262,8 +280,28 @@ correlation_plot_CausalGPS <-
   facet_wrap(~ gps_mod) + 
   labs(y = "Absolute correlation", x = "Covariate")
 
-ggsave(correlation_plot_CausalGPS, file = paste0(figure_dir, "fig3_correlation_plot_causalGPS.png"),
-       width = 10, height = 7,  dpi = 400)
+# ggsave(correlation_plot_CausalGPS, file = paste0(figure_dir, "supp_fig3_correlation_plot_causalGPS.png"),
+#        width = 10, height = 7,  dpi = 400)
+
+library(patchwork)
+
+# wrap the two plots with brackets
+plot_a <- correlation_plot_entropy + labs(title = "(a) Entropy weighting") 
+plot_b <- correlation_plot_CausalGPS + labs(title = "(b) CausalGPS")
+
+# arrange the two plots side by side
+combined_plots <- plot_a + plot_b & theme(legend.position = "bottom")
+combined_plots <- combined_plots + plot_layout(guides = "collect", ncol = 1)
+
+# arrange the two plots side by side
+combined_plots <- plot_a + plot_b & theme(legend.position = "bottom")
+combined_plots <- 
+  combined_plots + 
+  plot_layout(guides = "collect", ncol = 1) + 
+  plot_annotation(tag_levels = 'a')
+
+ggsave(combined_plots, file = paste0(figure_dir, "supp_fig2_correlation_plot.png"),
+       width = 10, height = 14,  dpi = 400)
 
 
 # Now work on bias and RMSE plots 
@@ -283,7 +321,7 @@ bias_RMSE_plots <- function(out_model) {
   # Absolute bias plot
   abs_bias_plot <- 
     metrics_collapse %>% 
-    filter(model != "causal_gps_default") %>% 
+    filter(model != "causal_default") %>% 
     filter(confounder_setting == "simple") %>% 
     #filter(sample_size == 1000) %>% 
     ggplot() + 
@@ -335,6 +373,9 @@ linear_plots <- bias_RMSE_plots("linear")
 abs_bias_linear <- linear_plots[[1]]
 rmse_linear <- linear_plots[[2]]
 
+
+
+
 # Save plots
 ggsave(
   filename = paste0(figure_dir, "fig4_abs_bias_linear.png"),
@@ -349,6 +390,124 @@ ggsave(
   plot = rmse_linear,
   width = 10,
   height = 7,
+  dpi = 400
+)
+
+# Now create plots for figure
+bias_RMSE_combine_plot <- function(out_model) {
+  
+  if (out_model == "linear") {
+    metrics_collapse = metrics_collapse_linear
+  } else if (out_model == "sublinear") {
+    metrics_collapse = metrics_collapse_sublinear
+  } else if (out_model == "threshold") {
+    metrics_collapse = metrics_collapse_threshold
+  } else {
+    stop("Outcome model must be linear, sublinear or threshold")
+  }
+  
+  # Absolute bias plot
+  abs_bias_plot <- 
+    metrics_collapse %>% 
+    filter(sample_size %in% c(1000)) %>%
+    filter(model != "causal_gps_default") %>% 
+    filter(confounder_setting == "simple") %>% 
+    #filter(sample_size == 1000) %>% 
+    ggplot() + 
+    geom_hline(yintercept = 0, size = 0.15, linetype = "dashed") +
+    geom_point(aes(y = abs_bias, x = factor(gps_mod), 
+                   color = model, fill = model, shape = model), 
+               position = position_dodge(.85), size = 2.7) + 
+    geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+    labs(x = "Scenario", y = "Value") + 
+    theme_bw(base_size = 14) + 
+    theme(legend.position = "bottom") + 
+    guides(colour = guide_legend(nrow = 1)) + 
+    theme(text = element_text(size=14),
+          axis.text.x = element_text(size = 12),
+          legend.title = element_blank(),
+          panel.grid.major.x = element_blank()) + 
+    scale_shape_manual(values=c(21, 10, 22, 12, 23, 9, 8))+
+    #coord_cartesian(ylim = c(-15, 15)) + 
+    facet_grid( ~ out_relationship, scales = "free", labeller = label_parsed) + 
+    #facet_wrap(~ out_relationship, scales = "free") + 
+    labs(y = "Absolute bias", x = "")
+  
+  # Now plot the RMSE 
+  rmse_plot <- 
+    metrics_collapse %>% 
+    filter(sample_size %in% c(1000)) %>%
+    filter(model != "causal_gps_default") %>% 
+    filter(confounder_setting == "simple") %>% 
+    #filter(sample_size == 1000) %>% 
+    ggplot() + 
+    geom_hline(yintercept = 0, size = 0.15, linetype = "dashed") +
+    geom_point(aes(y = rmse, x = factor(gps_mod), 
+                   color = model, fill = model, shape = model),
+               position = position_dodge(.85), size = 2.7) + 
+    # geom_pointrange(aes(y = mean, ymin = mean - sd, ymax = mean + sd, x = factor(gps_mod), color = model), position = position_dodge(.85), size = 0.35) +
+    geom_vline(xintercept=c(1.5, 2.5,3.5, 4.5, 5.5), linetype="dashed", size = 0.2) + 
+    labs(x = "Scenario", y = "Value") + 
+    # scale_y_continuous(trans='log10') + 
+    theme_bw(base_size = 14) + 
+    theme(legend.position = "bottom") + 
+    guides(colour = guide_legend(nrow = 1)) + 
+    theme(text = element_text(size=14),
+          axis.title.x = element_text(vjust = -1),
+          axis.text.x = element_text(size = 12),
+          legend.title = element_blank(),
+          panel.grid.major.x = element_blank()) + 
+    scale_shape_manual(values=c(21, 10, 22, 12, 23, 9, 8)) +
+    #coord_cartesian(ylim = c(-15, 15)) + 
+    facet_grid( ~ out_relationship, scales = "free", labeller = label_parsed) + 
+    #facet_wrap(~ out_relationship, scales = "free") + 
+    labs(y = "RMSE", x = "Exposure model")
+  
+  # wrap the two plots with brackets
+  plot_a <- abs_bias_plot
+  plot_b <- rmse_plot
+  
+  # arrange the two plots side by side
+  combined_plots <- plot_a + plot_b & theme(legend.position = "bottom")
+  combined_plots <- 
+    combined_plots + 
+    plot_layout(guides = "collect", ncol = 1) + 
+    plot_annotation(tag_levels = 'a')
+  
+  # Now return both plots
+  return(combined_plots)
+}
+
+linear_combine_plot <- bias_RMSE_combine_plot("linear")
+
+# Save plots
+ggsave(
+  filename = paste0(figure_dir, "fig1_linear_combine_plot.png"),
+  plot = linear_combine_plot,
+  width = 10,
+  height = 9,
+  dpi = 400
+)
+
+sublinear_combine_plot <- bias_RMSE_combine_plot("sublinear")
+
+# Save plots
+ggsave(
+  filename = paste0(figure_dir, "fig2_sublinear_combine_plot.png"),
+  plot = sublinear_combine_plot,
+  width = 10,
+  height = 9,
+  dpi = 400
+)
+
+threshold_combine_plot <- bias_RMSE_combine_plot("threshold")
+
+# Save plots
+ggsave(
+  filename = paste0(figure_dir, "fig3_threshold_combine_plot.png"),
+  plot = threshold_combine_plot,
+  width = 10,
+  height = 9,
   dpi = 400
 )
 
