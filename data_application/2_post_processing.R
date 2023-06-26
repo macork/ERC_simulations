@@ -21,10 +21,6 @@ model_flag = as.character(args[[2]])
 # For publication tags are listed below
 data_flag = "kevin_trim_90"
 model_flag = "Causal_by_year"
-#model_flag =  "weighted_update"
-
-# data_flag = "adjust_quantile"
-# model_flag = "old_boot"
 
 # set directories
 proj_dir <- "/n/dominici_nsaph_l3/Lab/projects/ERC_simulation"
