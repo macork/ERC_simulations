@@ -10,7 +10,6 @@ library(xgboost)
 library(SuperLearner)
 library(weights)
 library(CBPS)
-library(caret)
 library(WeightIt)
 library(chngpt)
 library(cobalt)
@@ -172,30 +171,10 @@ for (sample_size in c(200, 1000, 10000)) {
                  out_relationship = out_relationship)
         
         # put method for correlation table
-        cor_table <- cor_table %>% mutate(method = "ipw", delta = 0)
+        cor_table <- cor_table %>% mutate(delta = 0)
         
-        # Add on correlation
-        causal_default_pop <- metrics_predictions[[4]]$pseudo_pop
-        causal_default_balance <- 
-          bal.tab(w ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6,
-                  data = causal_default_pop,
-                  weights = causal_default_pop[["counter_weight"]],
-                  method = "weighting",
-                  stats = c("cor"),
-                  un = T,
-                  continuous = "std",
-                  s.d.denom = "weighted",
-                  abs = T,
-                  thresholds = c(cor = .1), poly = 1)
-        
-        cor_default <-
-          data.table(covariate = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6"),
-                     pre_cor = cor_table$pre_cor,
-                     post_cor = causal_default_balance$Balance$Corr.Adj,
-                     method = "causal_gps_default",
-                     delta =  metrics_predictions[[4]]$params$delta_n)
-        
-        causal_tuned_pop <- metrics_predictions[[5]]
+        # Add on correlation from causalGSP
+        causal_tuned_pop <- metrics_predictions[[4]]
         causal_tuned_balance <- 
           bal.tab(w ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6,
                   data = causal_tuned_pop,
@@ -215,9 +194,10 @@ for (sample_size in c(200, 1000, 10000)) {
                      method = "causal_gps_tuned",
                      delta =  0)
         
-        cor_table <- rbind(cor_table, cor_default, cor_tuned)
-        cor_table <- cor_table %>% mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim.num, 
-                                          confounder_setting = confounder_setting, out_relationship = out_relationship)
+        cor_table <- rbind(cor_table, cor_tuned)
+        cor_table <- cor_table %>% 
+          mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim.num,
+                 confounder_setting = confounder_setting, out_relationship = out_relationship)
         
         # Bind together data table with all results
         sim_metrics <- rbind(sim_metrics, data.table(metrics))
