@@ -1,24 +1,26 @@
 # Function for running ERC sim on FASSE cluster 
-rm(list = ls())
+
+# Change library path for running on cluster
+.libPaths(new = c("~/R/x86_64-pc-linux-gnu-library/4.2", .libPaths()))
 
 # Load libraries needed 
-library(tidyverse)
+library(purrr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
 library(MASS)
 library(parallel)
 library(xgboost)
 library(SuperLearner)
-library(weights)
-library(CBPS)
 library(WeightIt)
 library(chngpt)
 library(cobalt)
-library("CausalGPS")
-
+library(CausalGPS)
 
 # File paths
 # Set directory (based on username on cluster or local computer)
 if (Sys.getenv("USER") == "mcork") {
-  repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
+  repo_dir <- "~/nsaph_projects/ERC_simulation/Simulation_studies/"
 } else if (Sys.getenv("USER") == "michaelcork") {
   repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
 }
@@ -32,8 +34,8 @@ exposure_response_relationship = as.character(args[[1]])
 run_title = as.character(args[[2]])
 
 # Create out directory
-out_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder)
-if (!dir.exists(out_dir)) dir.create(out_dir)
+out_dir <- paste0(repo_dir, "results/", exposure_response_relationship, "_TRUE")
+# if (!dir.exists(out_dir)) dir.create(out_dir)
 
 # Create correct output directory (previously using time, now using whatever character you want)
 dir.create(paste0(out_dir, "/", run_title))
@@ -63,7 +65,7 @@ for (sample_size in c(200, 1000, 10000)) {
     for (outcome_interaction in c("T", "F")) {
       
       # Generate synthetic data for simulation study
-      sim_data <- sim_data_generate(sample_size = 1000, 
+      sim_data <- sim_data_generate(sample_size = sample_size, 
                                     gps_mod = gps_mod,
                                     exposure_response_relationship = exposure_response_relationship, 
                                     outcome_interaction = as.logical(outcome_interaction),
@@ -73,7 +75,7 @@ for (sample_size in c(200, 1000, 10000)) {
         # Get metrics and predictions from sample
         metrics_predictions <- 
           metrics_from_data(sim_data = sim_data,
-                            exposure_response_relationship = exp_relationship, 
+                            exposure_response_relationship = exposure_response_relationship, 
                             outcome_interaction = as.logical(outcome_interaction))
         
         metrics <- metrics_predictions$metrics

@@ -73,6 +73,7 @@ sim_data_generate <- function(sample_size = 1000,
     
     exposure <- data_app_sample$exposure
     cf <- as.matrix(data_app_sample %>% dplyr::select(-exposure))
+    names(cf) <- c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
   }
   
   # Add on exposure effect depending on relationship
@@ -205,6 +206,10 @@ metrics_from_data <- function(sim_data = sim_data,
                               save.boot = T, data = data_example, weights = data_example$ent3)
     
   # Now fit CausalGPS package ---------------------------------------------
+  
+  # Add ID column for CausalGPS package
+  data_example <- mutate(data_example, id = row_number())
+  
   # Set grid to tune over for causalGPS
   tune_grid <- tidyr::expand_grid(
     nrounds = 100,
@@ -219,14 +224,12 @@ metrics_from_data <- function(sim_data = sim_data,
   # Wrapper function for running causalGPS
   wrapper_func <- function(tune_param){
     # Run causalGPS with specified parameters
-    pseudo_pop_tune <- generate_pseudo_pop(Y = data_example$Y,
-                                           w = data_example$exposure,
-                                           c = data.frame(data_example[, c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")]),
+    pseudo_pop_tune <- generate_pseudo_pop(Y = data.frame(dplyr::select(data_example, Y, id)),
+                                           w = data.frame(dplyr::select(data_example, exposure, id)),
+                                           c = data.frame(dplyr::select(data_example, cf1, cf2, cf3, cf4, cf5, cf6, id)),
                                            ci_appr = "matching",
                                            pred_model = "sl",
-                                           gps_model = "parametric",
                                            use_cov_transform = FALSE,
-                                           transformers = list("pow2", "pow3", "abs", "scale"),
                                            exposure_trim_qtls = c(0.01, 0.99),
                                            optimized_compile = T,
                                            sl_lib = c("m_xgboost"),
@@ -236,6 +239,7 @@ metrics_from_data <- function(sim_data = sim_data,
                                            covar_bl_method = "absolute",
                                            covar_bl_trs = 0.1,
                                            covar_bl_trs_type = "mean",
+                                           dist_measure = "l1",
                                            max_attempt = 1,
                                            matching_fun = "matching_l1",
                                            delta_n = tune_param[[4]],
@@ -246,7 +250,7 @@ metrics_from_data <- function(sim_data = sim_data,
     matched_pop_tune <- pseudo_pop_tune$pseudo_pop
     
     # Now generate covariate balance
-    post_cor <- cov.wt(matched_pop_tune %>% dplyr::select(w, cf1:cf6), 
+    post_cor <- cov.wt(matched_pop_tune %>% dplyr::select(exposure, cf1:cf6), 
                        wt = matched_pop_tune$counter_weight, cor = TRUE)$cor
     post_cor <- abs(post_cor[-1, 1])
     mean_post_cor <- mean(post_cor)
@@ -272,13 +276,13 @@ metrics_from_data <- function(sim_data = sim_data,
   pseudo_pop_tuned <- wrapper_func(min_corr[1:4])[[2]]
   
   # Check that correlation
-  post_cor <- cov.wt(pseudo_pop_tuned[, c("w", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6")], 
+  post_cor <- cov.wt(pseudo_pop_tuned[, c("exposure", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6")], 
                      wt = (pseudo_pop_tuned$counter_weight), cor = T)$cor
   post_cor <- abs(post_cor[-1, 1])
   
   # Now outcome model with weights
   causal_gps_tuned <- 
-    mgcv::gam(formula = Y ~ s(w, bs = 'cr', k = 4) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6,
+    mgcv::gam(formula = Y ~ s(exposure, bs = 'cr', k = 4) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6,
               family = "gaussian",
               data = data.frame(pseudo_pop_tuned),
               weights = counter_weight)
@@ -330,7 +334,7 @@ metrics_from_data <- function(sim_data = sim_data,
                ent_linear3 = predict(entropy_lm3, newdata = potential_data, type = "response"), # Energy balancing
                ent_gam3 = predict(entropy_gam3, newdata = potential_data, type = "response"),
                ent_change3 = predict(change_model_ent3, newdata = potential_data, type = "response"),
-               causal_gps_tuned = potential_data %>% rename(w = exposure) %>% predict(causal_gps_tuned, newdata = ., type = "response"),
+               causal_gps_tuned = predict(causal_gps_tuned, newdata = potential_data, type = "response"),
                true_fit = Y) %>% 
         dplyr::select(exposure, linear_model, gam_model, change_model, ent_linear, ent_gam, ent_change,
                       ent_linear2, ent_gam2, ent_change2, ent_linear3, ent_gam3, ent_change3, causal_gps_tuned, true_fit) %>% 
