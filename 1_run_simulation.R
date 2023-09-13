@@ -44,10 +44,6 @@ out_dir <- paste0(out_dir, "/", run_title)
 # Source the appropriate functions needed for simulation 
 source(paste0(repo_dir, "/functions/simulation_functions.R"))
 
-# Define functions used for scaling exposure and gamma function
-cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
-scale_exposure <- function(x){20 * (x-min(x))/(max(x)-min(x))}
-
 # Start the simulations ------------------------------------------------------------------------------------------
 set.seed(sim.num)
 
@@ -55,6 +51,7 @@ set.seed(sim.num)
 sim_metrics <- tibble()
 sim_predictions <- tibble()
 sim_cor_table <- tibble()
+sim_convergence <- tibble()
 
 
 # loop through all sample sizes included
@@ -81,6 +78,7 @@ for (sample_size in c(200, 1000, 10000)) {
         metrics <- metrics_predictions$metrics
         predictions <-  metrics_predictions$predictions
         cor_table <- metrics_predictions$cor_table
+        convergence_info <- metrics_predictions$convergence_info
         
         # Add appropriate columns to metrics and predictions
         metrics <- 
@@ -102,14 +100,24 @@ for (sample_size in c(200, 1000, 10000)) {
           mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim.num,
                  exposure_response_relationship = exposure_response_relationship)
         
+        # Add on convergence info for entropy weighting
+        convergence_info <- 
+          convergence_info %>% 
+          mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim.num,
+                 exposure_response_relationship = exposure_response_relationship)
+        
+        
         # Bind together data table with all results
         sim_metrics <- bind_rows(sim_metrics, metrics)
         sim_predictions <- bind_rows(sim_predictions, predictions)
         sim_cor_table <- bind_rows(sim_cor_table, cor_table)
+        sim_convergence <- bind_rows(sim_convergence, convergence_info)
     }
   }
 }
 
+message("Saving output")
+
 # Save the final sim results in list and write to output directory
-sim_final <- list(sim_metrics, sim_predictions, sim_cor_table)
+sim_final <- list(sim_metrics, sim_predictions, sim_cor_table, sim_convergence)
 saveRDS(sim_final, file = paste0(out_dir, "/sim_final_", sim.num, ".RDS"))

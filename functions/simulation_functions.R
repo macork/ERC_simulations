@@ -26,6 +26,10 @@ sim_data_generate <- function(sample_size = 1000,
     stop("Invalid value for exposure_relationship. It should be 'linear', 'sublinear', or 'threshold'.")
   }
   
+  # Define functions used for scaling exposure and gamma function
+  cov_function <- function(confounders) as.vector(-0.8 + matrix(c(0.1, 0.1, -0.1, 0.2, 0.1, 0.1), nrow = 1) %*% t(confounders))
+  scale_exposure <- function(x){20 * (x-min(x))/(max(x)-min(x))}
+  
   if (!data_application) {
     # Generate the confounders
     cf <- mvrnorm(n = 2 * sample_size,
@@ -105,7 +109,6 @@ sim_data_generate <- function(sample_size = 1000,
 
 
 
-
 # This function fits all estimators to the data and extracts the absolute bias, RMSE
 # Sim data is output from first function sim data generate
 # Exposure response relationship determines if the relationship is linear, sublinear or threshold
@@ -136,15 +139,63 @@ metrics_from_data <- function(sim_data = sim_data,
                           family = "gaussian", type = "segmented", 
                           var.type = "bootstrap", save.boot = T, data = data_example)
   
-  # Fit weights models
-  weightit_models <- list(
-    ebal = weightit(exposure ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, 
-                    method = "ebal", stabilize = TRUE),
-    ebal_moments = weightit(exposure ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, 
-                            method = "ebal", stabilize = TRUE, moments = 2),
-    energy = weightit(exposure ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, data = data_example, 
-                      method = "energy")
+  # Fit weighting models --------------------------------------
+  max_attempts <- 5
+  
+  # Initialize a data frame to store convergence information
+  convergence_info <- data.frame(
+    method = c("ebal", "ebal_moments", "energy"),
+    converged = NA
   )
+  
+  # List to store models
+  weightit_models <- list(
+    ebal = NULL,
+    ebal_moments = NULL,
+    energy = NULL
+  )
+  
+  # Define the model formula
+  model_formula <- exposure ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6
+  
+  # List of methods
+  methods <- list(
+    ebal = list(method = "ebal", stabilize = TRUE),
+    ebal_moments = list(method = "ebal", stabilize = TRUE, moments = 2),
+    energy = list(method = "energy")
+  )
+  
+  # Loop over methods
+  for (method_name in names(methods)) {
+    
+    converged <- FALSE  # Reset the convergence flag at the start of each method
+    
+    # Loop for max_attempts
+    for (i in 1:max_attempts) {
+      
+      # Try to fit the model 
+      weightit_models[[method_name]] <- do.call(weightit, c(list(formula = model_formula, data = data_example), methods[[method_name]]))
+      
+      # Check convergence (if weights are all very small this indicates it did not converge)
+      if (all(weightit_models[[method_name]]$weights < 0.001) || any(weightit_models[[method_name]]$weights < 0)) {
+        converged <- FALSE
+      } else {
+        converged <- TRUE
+        break
+      }
+    }
+    
+    # Record the convergence status in the data frame
+    convergence_info$converged[convergence_info$method == method_name] <- converged
+    
+    # If not converged after max_attempts, set to NA and log a message
+    if (!converged) {
+      warning(paste("Method", method_name, "did not converge after", max_attempts, "attempts"))
+      # Convert to 1's for now, but will be discarded from simulation run
+      weightit_models[[method_name]]$weights <- rep(1, nrow(data_example))
+    }
+  }
+  
   
   # Add correct weights and truncate to 99.5th percentile
   data_example <- 
@@ -165,6 +216,15 @@ metrics_from_data <- function(sim_data = sim_data,
       # Grab weight of interest
       correct_weight <- data_example %>% dplyr::pull(!!rlang::sym(entropy_type))
       
+      # Check if the weights are all zero or contain negative values
+      if (all(correct_weight == 0) || any(correct_weight < 0)) {
+        warning(paste("Skipping covariance calculation for", entropy_type, "due to non-positive weights"))
+        return(data.frame(covariate = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6"), 
+                          pre_cor = NA, 
+                          post_cor = NA, 
+                          method = entropy_type))
+      }
+      
       post_cor <- cov.wt(data_example %>% dplyr::select(exposure, cf1:cf6), 
                          wt = correct_weight, cor = TRUE)$cor
       post_cor <- abs(post_cor[-1, 1])
@@ -177,6 +237,7 @@ metrics_from_data <- function(sim_data = sim_data,
              post_cor = post_cor, 
              method = entropy_type)
     })
+  
   
   # Now fit the entropy weighting models
   entropy_lm <- glm(Y ~ exposure + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, 
@@ -268,7 +329,7 @@ metrics_from_data <- function(sim_data = sim_data,
   }
   
   # Now iterate through simulation function, bind together results
-  pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 10, wrapper_func)
+  pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 6, wrapper_func)
   corr_search <- do.call("rbind", (lapply(pseudo_pop_list, function(x) x[[1]])))
   min_corr = corr_search %>% filter(mean_corr == min(mean_corr)) %>% slice_head()
   
@@ -392,7 +453,7 @@ metrics_from_data <- function(sim_data = sim_data,
   return_columns <- c("exposure", model_types, "true_fit")
   return(list(metrics = data_metrics, 
               predictions = dplyr::select(data_prediction, !!return_columns), 
-              cor_table = correlation_table, 
-              pseudo_pop_tuned = pseudo_pop_tuned))
+              cor_table = correlation_table,
+              convergence_info = convergence_info))
 }
 
