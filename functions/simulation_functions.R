@@ -268,7 +268,7 @@ metrics_from_data <- function(sim_data = sim_data,
   }
   
   # Now iterate through simulation function, bind together results
-  pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 6, wrapper_func)
+  pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 10, wrapper_func)
   corr_search <- do.call("rbind", (lapply(pseudo_pop_list, function(x) x[[1]])))
   min_corr = corr_search %>% filter(mean_corr == min(mean_corr)) %>% slice_head()
   
@@ -279,6 +279,18 @@ metrics_from_data <- function(sim_data = sim_data,
   post_cor <- cov.wt(pseudo_pop_tuned[, c("exposure", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6")], 
                      wt = (pseudo_pop_tuned$counter_weight), cor = T)$cor
   post_cor <- abs(post_cor[-1, 1])
+  
+  # Add to correlation table
+  cor_causalgps <- 
+    data.frame(covariate = c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6"),
+               pre_cor = correlation_table %>% filter(method == "ent") %>% arrange(covariate) %>% pull(pre_cor),
+               post_cor = post_cor,
+               method = "causal_gps_tuned",
+               delta = min_corr[["delta"]])
+  
+  # Delta is not relevant for other models but add to correlation table
+  correlation_table$delta = NA
+  correlation_table <- rbind(correlation_table, cor_causalgps)
   
   # Now outcome model with weights
   causal_gps_tuned <- 
