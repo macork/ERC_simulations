@@ -15,7 +15,8 @@ sim_data_generate <- function(sample_size = 1000,
                               exposure_response_relationship = NA, 
                               outcome_interaction = FALSE,
                               outcome_sd = 10, 
-                              data_application = FALSE) {
+                              data_application = FALSE,
+                              data_app_sample = NULL) {
   
   # Make sure input parameters are correct
   if (!gps_mod %in% 1:4) {
@@ -62,22 +63,10 @@ sim_data_generate <- function(sample_size = 1000,
     exposure <- exposure_df$exposure
     cf <- as.matrix(exposure_df %>% dplyr::select(-exposure))
   } else {
-    # Load in input data set (Please adjust paths and file names accordingly)
-    input_flag <- "kevin_trim_90"
-    proj_dir <- "/n/dominici_nsaph_l3/Lab/projects/"
-    out_dir <- paste0(proj_dir, "ERC_simulation/Medicare_data/model_input/", input_flag, "/")
-    data_app <- readRDS(file = paste0(out_dir, "/input_data.RDS"))
-    
-    # Sample the number of points (which are age, sex specific? )
-    data_app_sample <- 
-      data_app %>%
-      sample_n(sample_size, replace = FALSE) %>%
-      dplyr::select(exposure = pm25, mean_bmi, medianhousevalue, smoke_rate, education, poverty, winter_tmmx) %>%
-      mutate(across(-exposure, scale))
-    
+    # Use the data_app_sample argument
     exposure <- data_app_sample$exposure
-    cf <- as.matrix(data_app_sample %>% dplyr::select(-exposure))
-    names(cf) <- c("cf1", "cf2", "cf3", "cf4", "cf5", "cf6")
+    cf <- data_app_sample %>% dplyr::select(-exposure)
+    cf <- as.matrix(cf)
   }
   
   # Add on exposure effect depending on relationship
@@ -144,15 +133,14 @@ metrics_from_data <- function(sim_data = sim_data,
   
   # Initialize a data frame to store convergence information
   convergence_info <- data.frame(
-    method = c("ebal", "ebal_moments", "energy"),
+    method = c("ebal", "ebal_moments"),
     converged = NA
   )
   
   # List to store models
   weightit_models <- list(
     ebal = NULL,
-    ebal_moments = NULL,
-    energy = NULL
+    ebal_moments = NULL
   )
   
   # Define the model formula
@@ -161,8 +149,7 @@ metrics_from_data <- function(sim_data = sim_data,
   # List of methods
   methods <- list(
     ebal = list(method = "ebal", stabilize = TRUE),
-    ebal_moments = list(method = "ebal", stabilize = TRUE, moments = 2),
-    energy = list(method = "energy")
+    ebal_moments = list(method = "ebal", stabilize = TRUE, moments = 2)
   )
   
   # Loop over methods
@@ -202,17 +189,15 @@ metrics_from_data <- function(sim_data = sim_data,
     data_example %>% 
     mutate(
       ent = weightit_models$ebal$weights,
-      ent2 = weightit_models$ebal_moments$weights,
-      ent3 = weightit_models$energy$weights
+      ent2 = weightit_models$ebal_moments$weights
     ) %>%
     mutate(
       ent = ifelse(ent > quantile(ent, 0.995), quantile(ent, 0.995), ent),
-      ent2 = ifelse(ent2 > quantile(ent2, 0.995), quantile(ent2, 0.995), ent2),
-      ent3 = ifelse(ent3 > quantile(ent3, 0.995), quantile(ent3, 0.995), ent3)
+      ent2 = ifelse(ent2 > quantile(ent2, 0.995), quantile(ent2, 0.995), ent2)
     )
   
   correlation_table <- 
-    purrr::map_dfr(c("ent", "ent2", "ent3"), function(entropy_type) {
+    purrr::map_dfr(c("ent", "ent2"), function(entropy_type) {
       # Grab weight of interest
       correct_weight <- data_example %>% dplyr::pull(!!rlang::sym(entropy_type))
       
@@ -256,15 +241,6 @@ metrics_from_data <- function(sim_data = sim_data,
   change_model_ent2 <- chngptm(Y ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, ~ exposure, 
                               family = "gaussian", type = "segmented", var.type = "bootstrap", 
                               save.boot = T, data = data_example, weights = data_example$ent2)
-  
-  # Now fit "energy" weighting
-  entropy_lm3 <- glm(Y ~ exposure + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, 
-                     data = data_example, weights = ent3)
-  entropy_gam3 <- mgcv::gam(Y ~ s(exposure, bs = 'cr', k = 4) + cf1 + cf2 + cf3 + cf4 + cf5 + cf6, 
-                            data = data_example, weights = ent3)
-  change_model_ent3 <- chngptm(Y ~ cf1 + cf2 + cf3 + cf4 + cf5 + cf6, ~ exposure, 
-                              family = "gaussian", type = "segmented", var.type = "bootstrap", 
-                              save.boot = T, data = data_example, weights = data_example$ent3)
     
   # Now fit CausalGPS package ---------------------------------------------
   
@@ -283,30 +259,31 @@ metrics_from_data <- function(sim_data = sim_data,
   tune_grid_list <- as.list(as.data.frame(t(tune_grid)))
   
   # Wrapper function for running causalGPS
-  wrapper_func <- function(tune_param){
+  wrapper_func <- function(tune_param, return_type = "results") {
     # Run causalGPS with specified parameters
-    pseudo_pop_tune <- generate_pseudo_pop(Y = data.frame(dplyr::select(data_example, Y, id)),
-                                           w = data.frame(dplyr::select(data_example, exposure, id)),
-                                           c = data.frame(dplyr::select(data_example, cf1, cf2, cf3, cf4, cf5, cf6, id)),
-                                           ci_appr = "matching",
-                                           pred_model = "sl",
-                                           use_cov_transform = FALSE,
-                                           exposure_trim_qtls = c(0.01, 0.99),
-                                           optimized_compile = T,
-                                           sl_lib = c("m_xgboost"),
-                                           params = list(xgb_rounds = tune_param[[1]],
-                                                         xgb_eta = tune_param[[2]],
-                                                         xgb_max_depth = tune_param[[3]]),
-                                           covar_bl_method = "absolute",
-                                           covar_bl_trs = 0.1,
-                                           covar_bl_trs_type = "mean",
-                                           dist_measure = "l1",
-                                           max_attempt = 1,
-                                           matching_fun = "matching_l1",
-                                           delta_n = tune_param[[4]],
-                                           scale = 1,
-                                           nthread = 1)
-    
+    suppressMessages({
+      pseudo_pop_tune <- generate_pseudo_pop(Y = data.frame(dplyr::select(data_example, Y, id)),
+                                             w = data.frame(dplyr::select(data_example, exposure, id)),
+                                             c = data.frame(dplyr::select(data_example, cf1, cf2, cf3, cf4, cf5, cf6, id)),
+                                             ci_appr = "matching",
+                                             pred_model = "sl",
+                                             use_cov_transform = FALSE,
+                                             exposure_trim_qtls = c(0.01, 0.99),
+                                             optimized_compile = T,
+                                             sl_lib = c("m_xgboost"),
+                                             params = list(xgb_rounds = tune_param[[1]],
+                                                           xgb_eta = tune_param[[2]],
+                                                           xgb_max_depth = tune_param[[3]]),
+                                             covar_bl_method = "absolute",
+                                             covar_bl_trs = 0.1,
+                                             covar_bl_trs_type = "mean",
+                                             dist_measure = "l1",
+                                             max_attempt = 1,
+                                             matching_fun = "matching_l1",
+                                             delta_n = tune_param[[4]],
+                                             scale = 1,
+                                             nthread = 1)
+    })
     
     matched_pop_tune <- pseudo_pop_tune$pseudo_pop
     
@@ -325,16 +302,24 @@ metrics_from_data <- function(sim_data = sim_data,
                  scale = 1,
                  mean_corr = mean_post_cor,
                  max_corr = max(post_cor))
-    return(list(results, matched_pop_tune))
+    
+    if (return_type == "results") {
+      return(results)
+    } else if (return_type == "matched_pop") {
+      return(matched_pop_tune)
+    } else {
+      stop("Invalid return_type specified.")
+    }
   }
   
   # Now iterate through simulation function, bind together results
-  pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 6, wrapper_func)
-  corr_search <- do.call("rbind", (lapply(pseudo_pop_list, function(x) x[[1]])))
+  # For now using lapply to reduce memory load
+  pseudo_pop_list <- mclapply(tune_grid_list, mc.cores = 10, wrapper_func)
+  corr_search <- do.call("rbind", pseudo_pop_list)
   min_corr = corr_search %>% filter(mean_corr == min(mean_corr)) %>% slice_head()
-  
+
   # Extract minimum as your result
-  pseudo_pop_tuned <- wrapper_func(min_corr[1:4])[[2]]
+  pseudo_pop_tuned <- wrapper_func(as.list(min_corr[1:4]), return_type = "matched_pop")
   
   # Check that correlation
   post_cor <- cov.wt(pseudo_pop_tuned[, c("exposure", "cf1", "cf2", "cf3", "cf4", "cf5", "cf6")], 
@@ -404,21 +389,16 @@ metrics_from_data <- function(sim_data = sim_data,
                ent_linear2 = predict(entropy_lm2, newdata = potential_data, type = "response"), # Adjust for second moment
                ent_gam2 = predict(entropy_gam2, newdata = potential_data, type = "response"),
                ent_change2 = predict(change_model_ent2, newdata = potential_data, type = "response"),
-               ent_linear3 = predict(entropy_lm3, newdata = potential_data, type = "response"), # Energy balancing
-               ent_gam3 = predict(entropy_gam3, newdata = potential_data, type = "response"),
-               ent_change3 = predict(change_model_ent3, newdata = potential_data, type = "response"),
                causal_gps_tuned = predict(causal_gps_tuned, newdata = potential_data, type = "response"),
                true_fit = Y) %>% 
         dplyr::select(exposure, linear_model, gam_model, change_model, ent_linear, ent_gam, ent_change,
-                      ent_linear2, ent_gam2, ent_change2, ent_linear3, ent_gam3, ent_change3, causal_gps_tuned, true_fit) %>% 
+                      ent_linear2, ent_gam2, ent_change2, causal_gps_tuned, true_fit) %>% 
         summarize_all(mean) 
       return(potential_outcome)
     })
   
-  model_types <- c("linear_model", "gam_model", "change_model", "ent_linear", "ent_gam", "ent_change",
-                   "ent_linear2", "ent_gam2", "ent_change2", "ent_linear3", "ent_gam3", "ent_change3",
-                   "causal_gps_tuned")
-  
+  model_types <- c("linear_model", "gam_model", "change_model", "ent_linear", "ent_gam", 
+                   "ent_change","ent_linear2", "ent_gam2", "ent_change2","causal_gps_tuned")
   
   # Separate true_fit from the prediction data
   true_fit_data <- data_prediction %>% dplyr::select(exposure, true_fit)

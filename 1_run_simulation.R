@@ -56,10 +56,18 @@ sim_convergence <- tibble()
 
 # loop through all sample sizes included
 for (sample_size in c(200, 1000, 10000)) {
+  message(paste("Running with sample size", sample_size))
   # loop through all gps model specifications
   for (gps_mod in 1:4) {
+    message(paste("Running with gps model", gps_mod))
     # Loop through two different outcome relationships
     for (outcome_interaction in c("T", "F")) {
+      
+      if (outcome_interaction) {
+        message("Running with interaction in outcome model")
+      } else {
+        message("Running without interaction in outcome model")
+      }
       
       # Generate synthetic data for simulation study
       sim_data <- sim_data_generate(sample_size = sample_size, 

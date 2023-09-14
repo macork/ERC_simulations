@@ -5,14 +5,14 @@
 #SBATCH --account=dominici_lab
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --job-name erc_sim
-#SBATCH --output sim.out
-#SBATCH --mem=9GB
-#SBATCH --time=4:00:00
-#SBATCH --array=1-1000%100
+#SBATCH --job-name erc_sim_sensitivity
+#SBATCH --output sens.out
+#SBATCH --mem=30GB
+#SBATCH --time=01:00:00
+#SBATCH --array=1-1000%50
 #SBATCH --mail-user=mcork@g.harvard.edu
 #SBATCH --mail-type=ALL
-#SBATCH --error=sim.err
+#SBATCH --error=sens.err
 
 echo "Job script started"
 
@@ -24,4 +24,4 @@ fi
 
 echo "Modules loaded successfully"
 
-R CMD BATCH --no-save "--args $1 $2" 1_run_simulation.R Logs/${1}_${2}_run${SLURM_ARRAY_TASK_ID}.Rout
+R CMD BATCH --no-save "--args $1 $2" 4_sensitivity_analyses.R Logs/${1}_${2}_run${SLURM_ARRAY_TASK_ID}.Rout
