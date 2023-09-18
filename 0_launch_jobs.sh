@@ -9,7 +9,7 @@
 #SBATCH --output sim.out
 #SBATCH --mem=9GB
 #SBATCH --time=4:00:00
-#SBATCH --array=1-1000%100
+#SBATCH --array=1-1000%50
 #SBATCH --mail-user=mcork@g.harvard.edu
 #SBATCH --mail-type=ALL
 #SBATCH --error=sim.err

@@ -94,25 +94,29 @@ for (sample_size in c(200, 1000, 10000)) {
           mutate(gps_mod = gps_mod,
                  sample_size = sample_size,
                  sim = sim.num,
-                 exposure_response_relationship = exposure_response_relationship)
+                 outcome_interaction = outcome_interaction)
         
         predictions <- 
           predictions %>% 
           mutate(gps_mod = gps_mod, 
                  sample_size = sample_size, 
                  sim = sim.num,
-                 exposure_response_relationship = exposure_response_relationship)
+                 outcome_interaction = outcome_interaction)
         
         cor_table <- 
           cor_table %>% 
-          mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim.num,
-                 exposure_response_relationship = exposure_response_relationship)
+          mutate(gps_mod = gps_mod, 
+                 sample_size = sample_size, 
+                 sim = sim.num,
+                 outcome_interaction = outcome_interaction)
         
         # Add on convergence info for entropy weighting
         convergence_info <- 
           convergence_info %>% 
-          mutate(gps_mod = gps_mod, sample_size = sample_size, sim = sim.num,
-                 exposure_response_relationship = exposure_response_relationship)
+          mutate(gps_mod = gps_mod, 
+                 sample_size = sample_size, 
+                 sim = sim.num,
+                 outcome_interaction = outcome_interaction)
         
         
         # Bind together data table with all results
