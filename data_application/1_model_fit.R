@@ -2,11 +2,12 @@ rm(list = ls())
 
 # Load required packages
 library(data.table)
-library("CausalGPS", lib.loc = "/n/home_fasse/mcork/apps/ERC_simulation/R_4.0.5")
-library(tidyverse)
-library(chngpt)
+library(CausalGPS)
+library(purrr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
 library(WeightIt)
-library(fastDummies)
 library(mgcv)
 library(Rcpp)
 library(RcppEigen)
@@ -14,15 +15,15 @@ library(cobalt)
 
 # Get command arguments (first argument is which input data to use, second is name for model run)
 args <- commandArgs(T)
-input_flag <- as.character(args[[1]]) # Usually kevin_data_90 for this case
+input_flag <- as.character(args[[1]]) # Usually kevin_trim_90 for this case
 model_flag = as.character(args[[2]]) # Where model will be saved
 
 # Flags for whether to fit only CausalGPS package or only post estimation (models already fit)
 only_causalgps = F
-only_post = F
+only_post = T
 
 # load in data
-proj_dir <- "/n/dominici_nsaph_l3/Lab/projects/"
+proj_dir <- "~/nsaph_projects/"
 data <- readRDS(paste0(proj_dir, "ERC_simulation/Medicare_data/model_input/", input_flag, "/input_data.RDS"))
 
 # Create output directory for models
@@ -52,17 +53,12 @@ if (!only_post) {
     
     saveRDS(gam_fit, file = paste0(out_dir, "gam.RDS"))
     
-   
-    # Fit change model (not working with current dataset)
-    # change_model <-
-    #   chngptm(reformulate(c(strata_var, confounders), response = "log_mort"), ~ pm25,
-    #           data = data, family = "gaussian", 
-    #           type = "segmented", var.type = "default")
-    # 
-    # saveRDS(change_model, file = paste0(out_dir, "gam.RDS"))
+    
+    # Change point model did not work with current dataset
     
     # Now fit entropy weighting 
-    # Using custom entropy weighting since WeightIt package too slow
+    # Using custom entropy weighting for first moment
+    # Switched to WeightIt package for second moment 
     source(paste0(proj_dir, "ERC_simulation/Simulation_studies/data_application/functions/entropy_wt_functions.R"))
     
     # Fitting entropy weights on zip code level variables
@@ -71,7 +67,15 @@ if (!only_post) {
     # Get rid of repeats since eliminating strata to fit the models
     data_ent <- unique(data_ent)
     
-    # Create data entropy matri
+    # Try weightit function to calculate entropy balancing weights with second moment
+    ent_weights <- 
+      weightit(reformulate(confounders, response = "pm25"), data = data_ent,
+               method = "ebal", stabilize = TRUE, moments = 2)
+    
+    # Extract weights
+    ent_weights <- ent_weights$weights
+    
+    # Create data entropy matrix
     data_ent_matrix <- model.matrix(reformulate(c("-1", confounders)),
                                     data = data_ent)
     
@@ -80,15 +84,16 @@ if (!only_post) {
                    center = T,
                    scale = apply(data_ent_matrix, 2, function(x) ifelse(max(abs(x)) == 0, 1, max(abs(x)))))
     
-    # Run entropy weighting algorithm
-    e <- ebal(data_ent$pm25, c_mat)
-    ent_weights <- e$weights
-    # Truncate 99.5%
+    # # Run entropy weighting algorithm
+    # e <- ebal(data_ent$pm25, c_mat)
+    # ent_weights <- e$weights
+    
+    # Truncate 99.5% to lessen extreme weights
     ent_weights[ent_weights > quantile(ent_weights, 0.995)] <- quantile(ent_weights, 0.995)
     
     # Run through one more iteration to try to get rid of extreme weights
-    e <- ebal(data_ent$pm25, c_mat, base_weights = ent_weights)
-    ent_weights <- e$weights
+    # e <- ebal(data_ent$pm25, c_mat, base_weights = ent_weights)
+    # ent_weights <- e$weights
     
     # Make sure balanced
     cov.wt(cbind(data_ent$pm25, c_mat), ent_weights, TRUE)$cor[, 1]

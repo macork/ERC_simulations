@@ -8,13 +8,13 @@ library(fastDummies)
 library(mgcv)
 library(Rcpp)
 library(RcppEigen)
-library("CausalGPS", lib.loc = "/n/home_fasse/mcork/apps/ERC_simulation/R_4.0.5")
+library(CausalGPS)
 
 # Name for input data
 input_flag <- "kevin_trim_90"
 
 # load in data
-proj_dir <- "/n/dominici_nsaph_l3/Lab/projects/"
+proj_dir <- "~/nsaph_projects/"
 out_dir <- paste0(proj_dir, "ERC_simulation/Medicare_data/model_input/", input_flag, "/")
 dir.create(out_dir)
 
@@ -23,7 +23,7 @@ load("/n/dominici_nsaph_l3/Lab/projects/analytic/erc_strata/aggregate_data.RData
 data <- data.table(aggregate_data)
 
 # See percent of age in each category
-count(data, entry_age_break) %>% mutate(n = n / sum(n))
+count(data, age_break) %>% mutate(n = n / sum(n))
 
 # See percent of each race in category
 count(data, race) %>% mutate(n = n / sum(n))
@@ -48,7 +48,7 @@ max(data$pm25)
 # Make sure data is stored in correct form 
 data[, region := as.factor(region)]
 data[, race := as.factor(race)]
-data[, entry_age_break := as.factor(entry_age_break)]
+data[, age_break := as.factor(age_break)]
 data[, dual := as.factor(dual)]
 data[, year := factor(year)]
 data[, followup_year := factor(followup_year)]
@@ -94,7 +94,7 @@ gg_log_mort <-
 ggsave(gg_log_mort, file = paste0(out_dir, "/log_mort.pdf"))
 
 
-# Save input data to model folder (make sure not pushed to github)
+# Save input data to model folder
 saveRDS(data, file = paste0(out_dir, "/input_data.RDS"))
 
 # Now create m out of n dataset for uncertainty quantification 
@@ -105,8 +105,8 @@ m <- round(n / log(n))
 
 dir.create(paste0(out_dir, "/boostrap/"))
 
-# Save 100 datasets for bootstrap
-lapply(1:100, function(i) {
+# Save 1000 datasets for bootstrap
+lapply(385:1000, function(i) {
   set.seed(i)
   resample_zip_codes = sample(zip_codes, m, replace = T) # Sample zip with replacement
   resampled_data <- data[zip %in% resample_zip_codes] # save those zip codes

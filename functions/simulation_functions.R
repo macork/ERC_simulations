@@ -65,6 +65,7 @@ sim_data_generate <- function(sample_size = 1000,
   } else {
     # Use the data_app_sample argument
     exposure <- data_app_sample$exposure
+    # Confounders are everything minus the exposure
     cf <- data_app_sample %>% dplyr::select(-exposure)
     cf <- as.matrix(cf)
   }

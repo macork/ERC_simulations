@@ -1,12 +1,13 @@
 rm(list = ls())
 
-# Load libraries
+# Load required packages
 library(data.table)
-library("CausalGPS", lib.loc = "/n/home_fasse/mcork/apps/ERC_simulation/R_4.0.5")
-library(tidyverse)
-library(chngpt)
+library(CausalGPS)
+library(purrr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
 library(WeightIt)
-library(fastDummies)
 library(mgcv)
 library(Rcpp)
 library(RcppEigen)
@@ -23,7 +24,7 @@ post_only = F
 sample <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
 
 # Load in data and set out directory
-proj_dir <- "/n/dominici_nsaph_l3/Lab/projects/"
+proj_dir <- "~/nsaph_projects/"
 data <- readRDS(paste0(proj_dir, "ERC_simulation/Medicare_data/model_input/", input_flag, "/boostrap/boot_data_", sample, ".RDS"))
 
 # Make sure data is in correct form
@@ -76,13 +77,21 @@ if (!post_only) {
   saveRDS(gam_fit, file = paste0(out_dir, "gam.RDS"))
     
   # Now fit the entropy based weights in your model 
-  source(paste0(proj_dir, "ERC_simulation/Simulation_studies/data_application/functions/entropy_wt_functions.R"))
+  #source(paste0(proj_dir, "ERC_simulation/Simulation_studies/data_application/functions/entropy_wt_functions.R"))
     
   # Fitting entropy weights on zip code level variables
   data_ent <- data %>% select(all_of(c("zip", "pm25", confounders)))
     
   # Get rid of repeats since eliminating strata to fit the models
   data_ent <- unique(data_ent)
+  
+  # Try weightit function to calculate entropy balancing weights with second moment
+  ent_weights <- 
+    weightit(reformulate(confounders, response = "pm25"), data = data_ent,
+             method = "ebal", stabilize = TRUE, moments = 2)
+  
+  # Extract weights
+  ent_weights <- ent_weights$weights
     
   # Create model matrx
   data_ent_matrix <- model.matrix(reformulate(c("-1", confounders)),
@@ -93,13 +102,15 @@ if (!post_only) {
                  center = T,
                  scale = apply(data_ent_matrix, 2, function(x) ifelse(max(abs(x)) == 0, 1, max(abs(x)))))
     
-  e <- ebal(data_ent$pm25, c_mat)
-  ent_weights <- e$weights
+  # e <- ebal(data_ent$pm25, c_mat)
+  # ent_weights <- e$weights
+  
+  # Truncate to 99.5% percentile
   ent_weights[ent_weights > quantile(ent_weights, 0.995)] <- quantile(ent_weights, 0.995)
     
   # # Run through one more iteration to try to get rid of extreme weights
-  e <- ebal(data_ent$pm25, c_mat, base_weights = ent_weights)
-  ent_weights <- e$weights
+  # e <- ebal(data_ent$pm25, c_mat, base_weights = ent_weights)
+  # ent_weights <- e$weights
     
   # Add the entropy weights to this dataset
   data_ent$ent_weight <- ent_weights
@@ -151,40 +162,39 @@ if (!post_only) {
     source(paste0(proj_dir, "/ERC_simulation/Simulation_studies/data_application/functions/fit_causalGPS_by_year.R"))
     
     # Now fit CausalGPS model
-    grid_min_results <- 
-      fit_causalGPS_by_year(nrounds = 100, 
+    grid_min_results <-
+      fit_causalGPS_by_year(nrounds = 100,
                             max_depth = 5,
-                            eta = 0.3, 
-                            delta = 2, 
-                            return_corr_only = F, 
-                            nthread = 10, trim = T,
+                            eta = 0.3,
+                            delta = 2,
+                            return_corr_only = F,
+                            nthread = 10, 
+                            trim = T,
                             data_ent = data_ent,
-                            data_confounders = data_confounders)
+                            confounders = confounders)
     
     pseudo_pop <- grid_min_results$pseudo_pop
-    
     saveRDS(pseudo_pop, file = paste0(out_dir, "pseudo_pop.RDS"))
     
   
     # Join causal weights
     pseudo_pop_frame <- data.table(pseudo_pop)
-  
-  # Create causalGPS join (make sure no trimming going forward)
-  causalgps_join <- 
-    pseudo_pop_frame %>% 
-    select(zip = Y, year, causal_weight = counter_weight)
-  
-  data_causalGPS <- 
-    data %>% 
+
+  # Create causalGPS join to add weights from design stage 
+  causalgps_join <-
+    pseudo_pop_frame %>%
+    select(zip, year, causal_weight = counter_weight)
+
+  data_causalGPS <-
+    data %>%
     left_join(causalgps_join, by = c("zip", "year")) %>%
     mutate(causal_pop_weight = time_count * causal_weight) %>% # Multiply survey weights
     data.table()
-  
+
   # Multiply weights and use to fit causal model
-  causal_gps <- 
+  causal_gps <-
     mgcv::bam(reformulate(c("s(pm25, bs = 'cr', k = 4)", strata_var, confounders, "year"), response = "log_mort"),
               weight = causal_pop_weight, data = data_causalGPS)
-  
   saveRDS(causal_gps, file = paste0(out_dir, "causal_fit.RDS"))
   
   message("Done with fitting models")
@@ -212,10 +222,8 @@ data_prediction <-
       mutate(
         linear_model = predict(linear_fit, potential_data, type = "response"),
         gam_model = predict(gam_fit, newdata = potential_data, type = "response"),
-        #change_model = predict(change_model, newdata = potential_data, type = "response"),
         linear_ent = predict(linear_ent, potential_data, type = "response"),
         gam_ent = predict(gam_ent, newdata = potential_data, type = "response"),
-        #change_ent = predict(change_ent, newdata = potential_data, type = "response"),
         causal_model =  predict(causal_gps, newdata = potential_data, type = "response")
       ) %>% 
       dplyr::select(pm25, linear_model, linear_ent, gam_model, gam_ent, causal_model) %>% 

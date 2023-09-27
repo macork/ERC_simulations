@@ -18,7 +18,7 @@ replicates = 1000
 exp_relationship = "threshold"
 adjust_confounder = T
 model_tag = "resubmission_thousand"
-replicates = 900
+replicates = 1000
 
 # Grab repo directory (based on either local or on cluster)
 if (Sys.getenv("USER") == "mcork") {

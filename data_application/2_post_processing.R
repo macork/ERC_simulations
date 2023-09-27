@@ -21,9 +21,10 @@ model_flag = as.character(args[[2]])
 # For publication tags are listed below
 data_flag = "kevin_trim_90"
 model_flag = "Causal_by_year"
+model_flag = "resubmission_test"
 
 # set directories
-proj_dir <- "/n/dominici_nsaph_l3/Lab/projects/ERC_simulation"
+proj_dir <- "~/nsaph_projects/ERC_simulation/"
 model_dir <- paste0(proj_dir, "/Simulation_studies/data_application/model_fits/", model_flag, "/")
 
 # Load in input data 
@@ -137,9 +138,16 @@ gg_mort_se <-
   theme(legend.text=element_text(size=16),
         legend.position=c(.85,.25))
   #coord_cartesian(xlim = c(4, 12), ylim = c(0.7, 1.2)) + 
+
+
   
 ggsave(gg_mort_se, 
        file = paste0(model_dir, "mortality_se2.png"), 
+       width = 10, height = 7,
+       dpi = 400)
+
+ggsave(gg_mort_se, 
+       file = paste0(proj_dir, "Simulation_studies/figures_resubmission/fig5_mort_se.png"), 
        width = 10, height = 7,
        dpi = 400)
 
@@ -196,6 +204,11 @@ gg_relative_se <-
 
 ggsave(gg_relative_se, 
        file = paste0(model_dir, "relative_se_present.png"), 
+       width = 10, height = 7,
+       dpi = 400)
+
+ggsave(gg_relative_se, 
+       file = paste0(proj_dir, "Simulation_studies/figures_resubmission/fig6_relative_mort.png"), 
        width = 10, height = 7,
        dpi = 400)
 
@@ -362,6 +375,10 @@ balance_merged_plot <-
 
 ggsave(balance_merged_plot, 
        file = paste0(model_dir, "balance_plot.png"), width = 10, height = 10,
+       dpi = 400)
+
+ggsave(balance_merged_plot, 
+       file = paste0(proj_dir, "Simulation_studies/figures_resubmission/fig4_balance_plot.png"), width = 10, height = 10,
        dpi = 400)
 
 # # Plots of contrasts (omit for now)

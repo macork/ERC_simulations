@@ -1,5 +1,7 @@
 # Script to look into data application setting
 library(tidyverse)
+library(latex2exp)
+library(patchwork)
 
 # Function to summarize metrics
 collapse_metrics <- function(metrics_type, model_types) {
@@ -230,7 +232,7 @@ levels(metrics_collapse_all$out_relationship) = c(linear = TeX("$\\mu_{no-intera
 
 abs_bias_plot <- 
   metrics_collapse_all %>% 
-  filter(sample_size %in% c(1000)) %>%
+  filter(sample_size %in% c(10000)) %>%
   ggplot() + 
   geom_hline(yintercept = 0, size = 0.15, linetype = "dashed") +
   geom_point(aes(y = abs_bias, x = factor(erc_relationship), 
@@ -256,7 +258,7 @@ abs_bias_plot <-
   # Now plot the RMSE 
   rmse_plot <- 
     metrics_collapse_all %>% 
-    filter(sample_size %in% c(1000)) %>%
+    filter(sample_size %in% c(10000)) %>%
     # filter(model != "causal_gps_default") %>% 
     # filter(confounder_setting == "simple") %>% 
     #filter(sample_size == 1000) %>% 
@@ -283,7 +285,7 @@ abs_bias_plot <-
     scale_x_discrete(labels = c(linear = latex2exp::TeX("$\\mu_{linear}$"), 
                                 sublinear = latex2exp::TeX("$\\mu_{sublinear}$"), 
                                 threshold = latex2exp::TeX("$\\mu_{threshold}$"))) +
-    labs(y = "RMSE", x = "Mean model")
+    labs(y = "RMSE", x = "Mean function for outcome model")
   
   # wrap the two plots with brackets
   plot_a <- abs_bias_plot
@@ -300,7 +302,7 @@ all_together_plot <- combined_plots
 
 # Save plots
 ggsave(
-  filename = paste0(figure_dir, "supp_fig6_data_analysis_sensitivity_plot.png"),
+  filename = paste0(figure_dir, "supp_fig6_data_analysis_sensitivity_plot.pdf"),
   plot = all_together_plot,
   width = 10,
   height = 9,
