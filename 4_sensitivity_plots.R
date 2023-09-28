@@ -302,7 +302,7 @@ all_together_plot <- combined_plots
 
 # Save plots
 ggsave(
-  filename = paste0(figure_dir, "supp_fig6_data_analysis_sensitivity_plot.pdf"),
+  filename = paste0(figure_dir, "supp_fig12_data_analysis_sensitivity.pdf"),
   plot = all_together_plot,
   width = 10,
   height = 9,

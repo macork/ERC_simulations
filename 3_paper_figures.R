@@ -74,7 +74,7 @@ adjust_confounder = T
 #time_stamp = "first_draft2"
 #time_stamp = "first_submission4" # With trimming in CausalGPS
 time_stamp = "resubmission_thousand"
-replicates = 900
+replicates = 1000
 
 results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
 
@@ -108,7 +108,7 @@ exp_relationship = "sublinear"
 adjust_confounder = T
 #time_stamp = "first_submission4"
 time_stamp = "resubmission_thousand"
-replicates = 900
+replicates = 1000
 
 results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
 
@@ -136,7 +136,7 @@ exp_relationship = "threshold"
 adjust_confounder = T
 #time_stamp = "first_submission4"
 time_stamp = "resubmission_thousand"
-replicates = 900
+replicates = 1000
 
 results_dir <- paste0(repo_dir, "results/", exp_relationship, "_", adjust_confounder, "/", time_stamp, "/")
 
@@ -156,7 +156,7 @@ predictions_threshold <-
   mutate(out_relationship = if_else(as.logical(outcome_interaction), "interaction", "linear"), 
          out_relationship = factor(out_relationship, levels = c("linear", "interaction")))
 
-# Now make figures 1-3 for supplementary materials ------------------------------------------------------
+# Now make figures 1 and 2 for supplementary materials ------------------------------------------------------
 
 # Calculate mean absolute correlation of all six covariates
 mean_abs_cor <- 
@@ -262,8 +262,8 @@ correlation_plot_CausalGPS <-
 #        width = 10, height = 7,  dpi = 400)
 
 # wrap the two plots with brackets
-plot_a <- correlation_plot_entropy + labs(title = "(a) Entropy weighting") 
-plot_b <- correlation_plot_CausalGPS + labs(title = "(b) CausalGPS")
+plot_a <- correlation_plot_entropy
+plot_b <- correlation_plot_CausalGPS
 
 # arrange the two plots side by side
 combined_plots <- plot_a + plot_b & theme(legend.position = "bottom")
@@ -352,7 +352,7 @@ rmse_linear <- linear_plots[[2]]
 
 # Save plots
 ggsave(
-  filename = paste0(figure_dir, "fig4_abs_bias_linear.png"),
+  filename = paste0(figure_dir, "supp_fig3_abs_bias_linear.pdf"),
   plot = abs_bias_linear,
   width = 10,
   height = 7,
@@ -360,8 +360,53 @@ ggsave(
 )
 
 ggsave(
-  filename = paste0(figure_dir, "fig5_rmse_linear.png"),
+  filename = paste0(figure_dir, "supp_fig4_rmse_linear.pdf"),
   plot = rmse_linear,
+  width = 10,
+  height = 7,
+  dpi = 400
+)
+
+# Now for sublinear ----------------------------------------
+sublinear_plots <- bias_RMSE_plots("sublinear")
+abs_bias_sublinear <- sublinear_plots[[1]]
+rmse_sublinear <- sublinear_plots[[2]]
+
+# Save plots
+ggsave(
+  filename = paste0(figure_dir, "supp_fig6_abs_bias_sublinear.pdf"),
+  plot = abs_bias_sublinear,
+  width = 10,
+  height = 7,
+  dpi = 400
+)
+
+ggsave(
+  filename = paste0(figure_dir, "supp_fig7_rmse_sublinear.pdf"),
+  plot = rmse_sublinear,
+  width = 10,
+  height = 7,
+  dpi = 400
+)
+
+
+# Now for threshold ----------------------------------------
+threshold_plots <- bias_RMSE_plots("threshold")
+abs_bias_threshold<- threshold_plots[[1]]
+rmse_threshold <- threshold_plots[[2]]
+
+# Save plots
+ggsave(
+  filename = paste0(figure_dir, "supp_fig9_abs_bias_threshold.pdf"),
+  plot = abs_bias_threshold,
+  width = 10,
+  height = 7,
+  dpi = 400
+)
+
+ggsave(
+  filename = paste0(figure_dir, "supp_fig10_rmse_threshold.pdf"),
+  plot = rmse_threshold,
   width = 10,
   height = 7,
   dpi = 400
@@ -446,77 +491,32 @@ linear_combine_plot <- bias_RMSE_combine_plot(metrics_collapse_linear)
 
 # Save plots
 ggsave(
-  filename = paste0(figure_dir, "fig1_linear_combine_plot.png"),
+  filename = paste0(figure_dir, "fig1_linear_combine_plot.pdf"),
   plot = linear_combine_plot,
   width = 10,
   height = 9,
   dpi = 400
 )
 
-sublinear_combine_plot <- bias_RMSE_combine_plot("sublinear")
+sublinear_combine_plot <- bias_RMSE_combine_plot(metrics_collapse_sublinear)
 
 # Save plots
 ggsave(
-  filename = paste0(figure_dir, "fig2_sublinear_combine_plot.png"),
+  filename = paste0(figure_dir, "fig2_sublinear_combine_plot.pdf"),
   plot = sublinear_combine_plot,
   width = 10,
   height = 9,
   dpi = 400
 )
 
-threshold_combine_plot <- bias_RMSE_combine_plot("threshold")
+threshold_combine_plot <- bias_RMSE_combine_plot(metrics_collapse_threshold)
 
 # Save plots
 ggsave(
-  filename = paste0(figure_dir, "fig3_threshold_combine_plot.png"),
+  filename = paste0(figure_dir, "fig3_threshold_combine_plot.pdf"),
   plot = threshold_combine_plot,
   width = 10,
   height = 9,
-  dpi = 400
-)
-
-# Now for sublinear ----------------------------------------
-sublinear_plots <- bias_RMSE_plots("sublinear")
-abs_bias_sublinear <- sublinear_plots[[1]]
-rmse_sublinear <- sublinear_plots[[2]]
-
-# Save plots
-ggsave(
-  filename = paste0(figure_dir, "fig7_abs_bias_sublinear.png"),
-  plot = abs_bias_sublinear,
-  width = 10,
-  height = 7,
-  dpi = 400
-)
-
-ggsave(
-  filename = paste0(figure_dir, "fig8_rmse_sublinear.png"),
-  plot = rmse_sublinear,
-  width = 10,
-  height = 7,
-  dpi = 400
-)
-
-
-# Now for threshold ----------------------------------------
-threshold_plots <- bias_RMSE_plots("threshold")
-abs_bias_threshold<- threshold_plots[[1]]
-rmse_threshold <- threshold_plots[[2]]
-
-# Save plots
-ggsave(
-  filename = paste0(figure_dir, "fig10_abs_bias_threshold.png"),
-  plot = abs_bias_threshold,
-  width = 10,
-  height = 7,
-  dpi = 400
-)
-
-ggsave(
-  filename = paste0(figure_dir, "fig11_rmse_threshold.png"),
-  plot = rmse_threshold,
-  width = 10,
-  height = 7,
   dpi = 400
 )
 
@@ -597,7 +597,7 @@ linear_ERC <- ERC_plot("linear")
 
 # Save plots to use in results
 ggsave(
-  filename = paste0(figure_dir, "fig6_ERC_linear.png"),
+  filename = paste0(figure_dir, "supp_fig5_ERC_linear.png"),
   plot = linear_ERC,
   width = 7,
   height = 10,
@@ -608,7 +608,7 @@ sublinear_ERC <- ERC_plot("sublinear")
 
 # Save plots to use in results
 ggsave(
-  filename = paste0(figure_dir, "fig9_ERC_sublinear.png"),
+  filename = paste0(figure_dir, "supp_fig8_ERC_sublinear.png"),
   plot = sublinear_ERC,
   width = 7,
   height = 10,
@@ -619,7 +619,7 @@ threshold_ERC <- ERC_plot("threshold")
 
 # Save plots to use in results
 ggsave(
-  filename = paste0(figure_dir, "fig12_ERC_threshold.png"),
+  filename = paste0(figure_dir, "supp_fig11_ERC_threshold.png"),
   plot = threshold_ERC,
   width = 7,
   height = 10,
@@ -691,49 +691,49 @@ process_metrics <- function(data, model_types, figure_filename) {
 }
 
 # Run for linear case ------------
-process_metrics(
-  data = metrics_linear, 
-  model_types = c("linear_model", "ent_linear2", "gam_model", "ent_gam2", "change_model", "ent_change2", "causal_gps_tuned"), 
-  figure_filename = paste0(figure_dir, "supp_fig3_linear_ent2.png")
-)
+# process_metrics(
+#   data = metrics_linear, 
+#   model_types = c("linear_model", "ent_linear2", "gam_model", "ent_gam2", "change_model", "ent_change2", "causal_gps_tuned"), 
+#   figure_filename = paste0(figure_dir, "supp_xxx_linear_ent2.png")
+# )
 
 process_metrics(
   data = metrics_linear, 
   model_types = c("ent_linear", "ent_linear2", "ent_gam", "ent_gam2", "ent_change", "ent_change2"), 
-  figure_filename = paste0(figure_dir, "supp_fig3_linear_compare_ent_weighting.png")
+  figure_filename = paste0(figure_dir, "supp_fig13_linear_ent_weight.pdf")
 )
 
 # Now run for sublinear case --------------------------
-process_metrics(
-  data = metrics_sublinear, 
-  model_types = c("linear_model", "ent_linear2", "gam_model", "ent_gam2", "change_model", "ent_change2", "causal_gps_tuned"), 
-  figure_filename = paste0(figure_dir, "supp_fig4_sublinear_ent2.png")
-)
+# process_metrics(
+#   data = metrics_sublinear, 
+#   model_types = c("linear_model", "ent_linear2", "gam_model", "ent_gam2", "change_model", "ent_change2", "causal_gps_tuned"), 
+#   figure_filename = paste0(figure_dir, "supp_fig4_sublinear_ent2.png")
+# )
 
 process_metrics(
   data = metrics_sublinear, 
   model_types = c("ent_linear", "ent_linear2", "ent_gam", "ent_gam2", "ent_change", "ent_change2"), 
-  figure_filename = paste0(figure_dir, "supp_fig4_sublinear_compare_ent_weighting.png")
+  figure_filename = paste0(figure_dir, "supp_fig14_sublinear_ent_weight.pdf")
 )
 
 # Now run threshold case
-process_metrics(
-  data = metrics_threshold, 
-  model_types = c("linear_model", "ent_linear2", "gam_model", "ent_gam2", "change_model", "ent_change2", "causal_gps_tuned"), 
-  figure_filename = paste0(figure_dir, "supp_fig5_threshold_ent2.png")
-)
+# process_metrics(
+#   data = metrics_threshold, 
+#   model_types = c("linear_model", "ent_linear2", "gam_model", "ent_gam2", "change_model", "ent_change2", "causal_gps_tuned"), 
+#   figure_filename = paste0(figure_dir, "supp_fig5_threshold_ent2.png")
+# )
 
 process_metrics(
   data = metrics_threshold, 
   model_types = c("ent_linear", "ent_linear2", "ent_gam", "ent_gam2", "ent_change", "ent_change2"), 
-  figure_filename = paste0(figure_dir, "supp_fig5_threshold_compare_ent_weighting.png")
+  figure_filename = paste0(figure_dir, "supp_fig15_threshold_ent_weight.pdf")
 )
 
 
 
-## Now look into data application version of data and how it performs 
+## Supp figure 12 is produced from running 4_sensitivity_plots.R
 
-
+## Figures 4-6 are produced in data_application/2_post_processing.R
 
 
 # Around 50% of model 3 fails to converge for entropy balancing on second 
@@ -741,7 +741,7 @@ process_metrics(
 
 
 
-#### Last 3 figures are produced in data_application/2_post_processing.R code 
+
 
 
 
