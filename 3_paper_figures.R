@@ -538,7 +538,34 @@ ERC_plot <- function(out_model) {
     filter(out_relationship == "interaction", sample_size == 1000) %>% 
     pivot_longer(cols = c("linear", "linear_ent", "gam", "gam_ent", "change", "change_ent", "CausalGPS", "true_fit"), 
                  names_to = "name") %>%
-    mutate(name = factor(name, levels = c("linear", "linear_ent", "gam", "gam_ent", "change", "change_ent", "CausalGPS", "true_fit"))) 
+    mutate(name = factor(name, levels = c("linear", "linear_ent", "gam", "gam_ent", "change", "change_ent", "CausalGPS", "true_fit"),
+                         labels = c("Linear", "Linear\nEntropy", "GAM", "GAM\nEntropy", "Change", "Change\nEntropy", "CausalGPS", "true_fit"))) 
+  
+  
+  # levels(pred_plot$name) <- c(
+  #   linear = "$\\text{Linear}$",
+  #   linear_ent = "$\\text{Linear}\\\\\\text{Entropy}$",
+  #   gam = "$\\text{GAM}$",
+  #   gam_ent = "$\\text{GAM}\\\\\\text{Entropy}$",
+  #   change = "$\\text{Change}$",
+  #   change_ent = "$\\text{Change}\\\\\\text{Entropy}$",
+  #   CausalGPS = "$\\text{CausalGPS}$",
+  #   true_fit = "true_fit"
+  # )
+  
+  
+  levels(pred_plot$name) <- c(
+    linear = TeX("$\\text{Linear}$"),
+    linear_ent = TeX("$\\text{Linear}\\\\\\text{Entropy}$"),
+    gam = TeX("$\\text{GAM}$"),
+    gam_ent = TeX("$\\text{GAM}\\\\\\text{Entropy}$"),
+    change = TeX("$\\text{Change}$"),
+    change_ent = TeX("$\\text{Change}\\\\\\text{Entropy}$"),
+    CausalGPS = TeX("$\\text{CausalGPS}$"),
+    true_fit = "true_fit"
+  )
+  
+  
   
   pred_summary <- 
     pred_plot %>%
