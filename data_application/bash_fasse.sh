@@ -13,6 +13,6 @@
 #SBATCH --mail-user=mcork@g.harvard.edu
 #SBATCH --mail-type=ALL
 
-module load gcc/9.3.0-fasrc01 R/4.0.5-fasrc02
+module load gcc/9.5.0-fasrc01 R/4.2.2-fasrc01
 
 R CMD BATCH --no-save "--args $1 $2" 1_model_fit.R Logs/data_app_fasse_$2.Rout

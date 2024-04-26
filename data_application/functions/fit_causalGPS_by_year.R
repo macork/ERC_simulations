@@ -1,4 +1,9 @@
 # Function to fit CausalGPS by each year of the dataset
+# nrounds, max depth, eta are parameters for xgboost and fittings GPS
+# delta specifies bin length for expsoure, another hyperparameters
+# Return_Corr_only only returns the correlations if looking to train hyperparameters only
+# data ent is the data used for creating gps 
+# Confounders is list of confounder names 
 fit_causalGPS_by_year <- function(nrounds,
                                   max_depth,
                                   eta,
@@ -7,16 +12,20 @@ fit_causalGPS_by_year <- function(nrounds,
                                   nthread = 1,
                                   trim = T,
                                   data_ent, 
-                                  data_confounders) {
+                                  confounders) {
+  
+  
+  # Add ID column for CausalGPS package
+  data_ent <- mutate(data_ent, id = row_number())
+  data_confounders <- data.frame(data_ent %>% select(all_of(c(confounders, "id"))) %>% select(-year))
   
   # Estimate the GPS
   zip_year_gps <- 
-    estimate_gps(data_ent$zip,
-                 data_ent$pm25,
-                 data.frame(data_confounders),
+    estimate_gps(w = data.frame(dplyr::select(data_ent, pm25, id)),
+                 c = data_confounders,
                  ci_appr = "matching",
                  pred_model = "sl",
-                 gps_model = "parametric",
+                 gps_density = "normal",
                  use_cov_transform = FALSE,
                  transformers = list("pow2", "pow3", "abs", "scale"),
                  trim_quantiles = c(0, 1),
@@ -37,16 +46,16 @@ fit_causalGPS_by_year <- function(nrounds,
                  scale = 1,
                  nthread = nthread)
   
-  zip_year_gps_plus_params <- as.data.table(zip_year_gps$dataset)
-  zip_year_gps_plus_params$e_gps_pred <- zip_year_gps$e_gps_pred
-  zip_year_gps_plus_params$w_resid <- zip_year_gps$w_resid
-  zip_year_gps_plus_params$year <- data_ent$year
+  # Extract data to then split by year with GPS attached
+  # Group by year
+  zip_year_gps_plus_params <- 
+    zip_year_gps$dataset %>%
+    left_join(data_ent)
   
-  # Break up data set by year
-  setkey(zip_year_gps_plus_params, year)
-  zip_year_gps_plus_params[, row_index := 1:.N, by = year]
-  zip_list_by_year <- split(zip_year_gps_plus_params,
-                            zip_year_gps_plus_params$year)
+  # Split the data frame into a list of data frames, one for each year
+  zip_list_by_year <- 
+    zip_year_gps_plus_params %>%
+    split(.$year)
   
   # now match within each year
   matched_data <- 
@@ -55,25 +64,22 @@ fit_causalGPS_by_year <- function(nrounds,
       # Create dataset so CausalGPS can match
       dataset_gps <- list()
       class(dataset_gps) <- "cgps_gps"
-      dataset_gps$dataset <- subset(as.data.frame(z),
-                                    select = c("Y", "w", "gps", "counter_weight", 
-                                               "row_index", # used in matching
-                                               "year", # used to merge with full data
-                                               confounders))
-      dataset_gps$e_gps_pred <- z$e_gps_pred
-      dataset_gps$w_resid <- z$w_resid
-      dataset_gps$e_gps_std_pred <- zip_year_gps$e_gps_std_pred
+      
+      dataset_gps$dataset <- 
+        z %>%
+        select(id, pm25, gps, e_gps_pred, e_gps_std_pred, w_resid, zip, year, all_of(confounders)) %>% 
+        as.data.frame()
       dataset_gps$gps_mx <- zip_year_gps$gps_mx
       dataset_gps$w_mx <- zip_year_gps$w_mx
       
       # now match dataset
       matched_pop <- compile_pseudo_pop(data_obj = dataset_gps,
                                         ci_appr = "matching",
-                                        gps_model = "parametric",
+                                        gps_density = "normal",
+                                        exposure_col_name = c("pm25"),
                                         bin_seq = NULL,
                                         nthread = nthread,
-                                        optimized_compile = T,
-                                        matching_fun = "matching_l1",
+                                        dist_measure = "l1",
                                         covar_bl_method = "absolute",
                                         covar_bl_trs = 0.1,
                                         covar_bl_trs_type = "maximal",
@@ -91,7 +97,7 @@ fit_causalGPS_by_year <- function(nrounds,
   
   # Now generate covariate balance tab
   balance_table <- 
-    bal.tab(reformulate(confounders, response = "w"),
+    bal.tab(reformulate(confounders, response = "pm25"),
             data = matched_data,
             weights = matched_data[["counter_weight"]],
             method = "weighting",

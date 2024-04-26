@@ -10,12 +10,23 @@ adjust_confounder = T
 model_tag = "first_submission4"
 replicates = 100
 
+exp_relationship = "sublinear"
+adjust_confounder = T
+model_tag = "data_sensitivity_analysis"
+replicates = 1000
+
+exp_relationship = "threshold"
+adjust_confounder = T
+model_tag = "resubmission_thousand"
+replicates = 1000
+
 # Grab repo directory (based on either local or on cluster)
 if (Sys.getenv("USER") == "mcork") {
-  repo_dir <- "/n/dominici_nsaph_l3/projects/ERC_simulation/Simulation_studies/"
+  repo_dir <- "~/nsaph_projects/ERC_simulation/Simulation_studies/"
 } else if (Sys.getenv("USER") == "michaelcork") {
   repo_dir <- "~/Desktop/Francesca_research/Simulation_studies/"
 }
+
 
 # Get results directory
 results_dir <- paste0(repo_dir, "/results/", exp_relationship, "_", adjust_confounder,
@@ -45,6 +56,7 @@ predictions <-
     }
   }))
 
+
 # Bind together correlations
 correlation <- 
   rbindlist(lapply(1:replicates, function(rep){
@@ -57,6 +69,19 @@ correlation <-
     }
   }))
 
+
+# Bind together indicator of convergence
+convergence <- 
+  rbindlist(lapply(1:replicates, function(rep){
+    sim_corr <- try(readRDS(paste0(results_dir, "sim_final_", rep, ".RDS"))[[4]], silent = T)
+    if (is.data.frame(sim_corr)) {
+      data.table(sim_corr)
+      return(sim_corr)
+    } else {
+      return()
+    }
+  }))
+
 # Save list as aggregated results
-saveRDS(list(metrics = metrics, predictions = predictions, correlation = correlation),
+saveRDS(list(metrics = metrics, predictions = predictions, correlation = correlation, convergence = convergence),
         file = paste0(results_dir, "aggregated_results.RDS"))
